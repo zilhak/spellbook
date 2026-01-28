@@ -1,30 +1,140 @@
-# Memorize - VectorDB 기반 Claude 메모리 MCP 서버
+# Spellbook - VectorDB 기반 Claude 메모리 MCP 서버
 
 ## 프로젝트 개요
 
-Claude Code에 영구적인 기억 시스템을 제공하는 MCP 서버.
+AI 에이전트 개인화 과정에서 축적되는 md 문서들을 보관하고 검색하는 MCP 서버.
 VectorDB를 사용하여 의미 기반 검색으로 관련 정보를 빠르게 찾아낸다.
 
 ### 핵심 목표
 
-1. **영속적 기억**: 세션이 끝나도 정보 유지
+1. **단순한 저장소**: 저장(scribe)과 검색(memorize) 기능만 제공
 2. **의미 기반 검색**: 키워드가 아닌 의미로 관련 정보 검색
 3. **효율적인 컨텍스트 사용**: 필요한 정보만 로드하여 토큰 절약
-4. **AI 기반 청킹**: 휴리스틱이 아닌 AI가 의미 단위로 문서 분할
+
+### 청킹 책임
+
+MCP를 호출하는 주체가 AI Agent(Claude)이므로, **청킹은 Agent가 담당**한다.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Claude (AI Agent)                                               │
+│                                                                 │
+│  - 저장할 내용을 의미 단위로 분할                               │
+│  - 적절한 메타데이터(topic, keywords 등) 부여                   │
+│  - scribe() 호출                                                │
+└─────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ Spellbook (MCP)                                                 │
+│                                                                 │
+│  - 받은 청크를 임베딩                                           │
+│  - VectorDB에 저장                                              │
+│  - 검색 시 유사도 기반 반환                                     │
+│                                                                 │
+│  ※ 청킹 로직 없음, LLM 호출 없음                                │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**MCP 서버가 단순해지는 장점:**
+- 별도 LLM 호출 불필요
+- 청킹 프롬프트 설계 불필요
+- 임베딩 + 저장 + 검색만 담당
+
+### 역할 범위
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Spellbook (이 MCP)                                              │
+│                                                                 │
+│  - 문서 저장 (scribe)                                           │
+│  - 문서 검색 (memorize)                                         │
+│  - 임베딩, 인덱싱                                               │
+│                                                                 │
+│  ※ 청킹은 Agent가 담당                                         │
+│  ※ 무엇을 저장할지, 언제 검색할지는 관여하지 않음               │
+└─────────────────────────────────────────────────────────────────┘
+                                │
+                                │ 사용 지침은 별도
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ 별도 지침 (CLAUDE.md, 시스템 프롬프트 등)                       │
+│                                                                 │
+│  - 언제 scribe를 호출할지                                       │
+│  - 언제 memorize를 호출할지                                     │
+│  - 어떤 정보를 기억할 가치가 있는지                             │
+│  - 어떤 상황에서 기억을 참조할지                                │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**즉, Spellbook은 "똑똑한 파일 서랍"일 뿐이다.**
+
+### 시스템 데이터
+
+청크 분할 가이드, 메타데이터 작성 규칙 등도 VectorDB에 저장한다.
+Agent는 scribe 전에 가이드를 memorize해서 참고한다.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Spellbook (VectorDB)                                            │
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ 시스템 데이터 (category: "system")                       │   │
+│  │                                                         │   │
+│  │  - 청크 분할 가이드                                      │   │
+│  │  - 메타데이터 작성 규칙                                  │   │
+│  │  - 사용 예시                                            │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ 사용자 데이터 (category: "project", "preference", ...)   │   │
+│  │                                                         │   │
+│  │  - 프로젝트 정보                                        │   │
+│  │  - 결정 사항                                            │   │
+│  │  - ...                                                  │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Agent의 scribe 흐름:**
+```
+Agent가 scribe 하려 함
+    │
+    ▼ memorize("청크 분할 가이드", filter: {category: "system"})
+    │
+    ▼ 가이드 참고해서 청킹
+    │
+    ▼ scribe(chunk)
+```
+
+**장점:**
+- 가이드도 업데이트/버전 관리 가능
+- 가이드 자체도 의미 검색 가능
+- 모든 메타 정보가 같은 시스템에서 관리
+- 초기 설정 시 기본 가이드 seed 가능
+
+---
+
+## 용어 정의
+
+| 용어 | 설명 |
+|------|------|
+| **Scribe** | 정보를 저장하는 행위. MCP를 통해 기억을 기록한다. |
+| **Memorize** | 정보를 꺼내오는 행위. MCP를 통해 기억을 호출한다. |
+| **Chunk** | 의미 단위로 분할된 정보 조각 |
+| **Topic** | 관련 Chunk들의 묶음 (세부 목차) |
+| **Spellbook** | 모든 기억이 저장된 저장소 (이 프로젝트) |
 
 ---
 
 ## 핵심 개념
 
-### 1. AI 청킹 (AI Chunking)
+### 1. Chunk 구조
 
-일반 청킹(500자씩 자르기)이 아닌, AI가 의미 단위로 문서를 분할한다.
+Agent(Claude)가 scribe 호출 시 전달하는 데이터 구조:
 
 ```
-원본 문서
-    │
-    ▼ AI 처리
-
 Chunk:
   - text: 실제 내용
   - metadata:
@@ -34,6 +144,8 @@ Chunk:
       entities: 관련 개체 (사람, 프로젝트, 기술 등)
       importance: 중요도
 ```
+
+**Agent가 저장 시 의미 단위로 잘 정리해서 보내야 한다.**
 
 ### 2. 계층적 인덱스 (Hierarchical Index)
 
@@ -51,89 +163,102 @@ Level 2: 실제 청크 (VectorDB)
 - **세부 목차**: 각 카테고리 내 토픽 목록 (필요 시 검색)
 - **청크**: 실제 상세 내용 (필요 시 검색)
 
-### 3. 저장 vs 검색 흐름
+### 3. Scribe vs Memorize 흐름
 
 ```
-[저장 시 - 비동기, 느려도 됨]
-문서/대화 → AI 청킹 → 메타데이터 추출 → 임베딩 생성 → VectorDB 저장
-                                                    → 목차 업데이트
+[Scribe - 저장]
+Agent가 청크 정리 → scribe(chunk) → MCP가 임베딩 → VectorDB 저장
+                                               → 목차 업데이트
 
-[검색 시 - 빨라야 함]
-질문 → 임베딩 → 유사도 검색 → 관련 청크 반환 → 컨텍스트에 주입
+[Memorize - 검색]
+Agent가 질문 → memorize(query) → MCP가 임베딩 → 유사도 검색 → 청크 반환
 ```
 
 ---
 
 ## 아키텍처
 
+Docker 컨테이너 하나에 MCP 서버와 VectorDB를 통합하여 배포를 단순화한다.
+MCP는 HTTP/SSE 방식으로 독립 서버로 실행된다.
+
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                          Claude Code                                │
 │                                                                     │
-│  세션 시작 → get_memory_index() → 메타 목차 로드                    │
+│  세션 시작 → get_index() → 메타 목차 로드                           │
 │                                                                     │
-│  질문 → memory_search(query) → 관련 청크 반환                       │
+│  질문 → memorize(query) → 관련 청크 반환                            │
 │                                                                     │
-│  새 정보 → memory_save(content) → 청킹 + 저장                       │
+│  새 정보 → Agent가 청킹 → scribe(chunk) → 저장                      │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
                                 │
-                                │ MCP 프로토콜
+                                │ HTTP + SSE
                                 ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                      Memorize MCP Server                            │
+│                    Docker Container (spellbook)                     │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                     │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐                 │
-│  │ Chunker     │  │ Embedder    │  │ Searcher    │                 │
-│  │ (AI 청킹)   │  │ (임베딩)    │  │ (검색)      │                 │
-│  └─────────────┘  └─────────────┘  └─────────────┘                 │
-│         │                │                │                         │
-│         └────────────────┼────────────────┘                         │
-│                          ▼                                          │
-│                 ┌─────────────────┐                                 │
-│                 │    VectorDB     │                                 │
-│                 │   (ChromaDB)    │                                 │
-│                 └─────────────────┘                                 │
-│                          │                                          │
-│                          ▼                                          │
-│                 ┌─────────────────┐                                 │
-│                 │   Index Store   │                                 │
-│                 │  (메타 목차)    │                                 │
-│                 └─────────────────┘                                 │
+│  ┌───────────────────────────────────────────────────────────────┐ │
+│  │                    MCP Server (HTTP/SSE)                      │ │
+│  │                                                               │ │
+│  │  - 임베딩 생성 (Ollama 호출)                                  │ │
+│  │  - 검색/인덱싱                                                │ │
+│  │  - Qdrant 연동                                                │ │
+│  │                                                               │ │
+│  │  ※ 청킹은 Agent가 담당                                       │ │
+│  └───────────────────────────────────────────────────────────────┘ │
+│                                │                                    │
+│                                ▼                                    │
+│  ┌───────────────────────────────────────────────────────────────┐ │
+│  │                    Qdrant (embedded)                          │ │
+│  │                                                               │ │
+│  │  - 벡터 저장/검색                                             │ │
+│  │  - 메타데이터 필터링                                          │ │
+│  └───────────────────────────────────────────────────────────────┘ │
+│                                                                     │
+│  Volume: /data (영속 데이터)                                        │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
+
+### 왜 이 구조인가?
+
+| 결정 | 이유 |
+|------|------|
+| **Docker 통합** | VectorDB 서버가 필요하므로, MCP 서버까지 함께 컨테이너화하여 배포 단순화 |
+| **HTTP/SSE 방식** | stdio 대신 독립 서버로 실행하여 Docker 내부에서 완결 |
+| **Qdrant embedded** | 별도 프로세스 없이 라이브러리로 임베딩, 풍부한 메타데이터 필터링 지원 |
 
 ---
 
 ## MCP 도구 (Tools) 정의
 
-### 읽기 도구
+### Memorize (읽기/검색)
 
 | 도구 | 설명 | 파라미터 |
 |------|------|----------|
-| `get_memory_index` | 메타 목차 반환 (세션 시작 시 호출) | `scope?`: 범위 제한 |
-| `memory_search` | 의미 기반 검색 | `query`, `limit?`, `filter?` |
-| `get_topic_detail` | 특정 토픽의 모든 청크 조회 | `topic_id` |
+| `get_index` | 메타 목차 반환 (세션 시작 시 호출) | `scope?`: 범위 제한 |
+| `memorize` | 의미 기반 검색 | `query`, `limit?`, `filter?` |
+| `get_topic` | 특정 토픽의 모든 청크 조회 | `topic_id` |
 
-### 쓰기 도구
+### Scribe (쓰기/저장)
 
 | 도구 | 설명 | 파라미터 |
 |------|------|----------|
-| `memory_save` | 새 정보 저장 (AI 청킹 수행) | `content`, `source?`, `category?` |
-| `memory_save_chunk` | 이미 청킹된 정보 직접 저장 | `chunk` (구조화된 데이터) |
-| `memory_delete` | 특정 청크/토픽 삭제 | `chunk_id` or `topic_id` |
-| `memory_update` | 기존 청크 수정 | `chunk_id`, `content` |
+| `scribe` | 새 정보 저장 | `chunk`, `source?`, `category?` |
+| `scribe_chunk` | 이미 청킹된 정보 직접 저장 | `chunk` (구조화된 데이터) |
+| `erase` | 특정 청크/토픽 삭제 | `chunk_id` or `topic_id` |
+| `revise` | 기존 청크 수정 | `chunk_id`, `content` |
 
 ### 관리 도구
 
 | 도구 | 설명 | 파라미터 |
 |------|------|----------|
-| `memory_stats` | 저장소 통계 (청크 수, 카테고리별 분포) | - |
-| `memory_rebuild_index` | 목차 재구축 | - |
-| `memory_export` | 백업 내보내기 | `format`: json/markdown |
-| `memory_import` | 백업 가져오기 | `file_path` |
+| `stats` | 저장소 통계 (청크 수, 카테고리별 분포) | - |
+| `rebuild_index` | 목차 재구축 | - |
+| `export` | 백업 내보내기 | `format`: json/markdown |
+| `import` | 백업 가져오기 | `file_path` |
 
 ---
 
@@ -199,22 +324,28 @@ interface MetaIndex {
 
 ## 기술 스택
 
-### 필수 구성요소
+### 확정
 
 | 구성요소 | 선택 | 이유 |
 |----------|------|------|
-| **Runtime** | Node.js (TypeScript) | MCP SDK 공식 지원 |
-| **VectorDB** | ChromaDB | 로컬 실행, 설치 간편, Python/JS 지원 |
-| **Embedding** | Ollama (nomic-embed-text) | 로컬 실행, 무료, 성능 양호 |
-| **AI 청킹** | Claude API or Ollama | 의미 단위 분할 + 메타데이터 추출 |
+| **VectorDB** | Qdrant (embedded) | 메타데이터 필터링 우수, 안정성, 확장 가능 |
+| **MCP 전송** | HTTP/SSE | Docker 내부에서 독립 서버로 실행 |
+| **배포** | Docker | MCP 서버 + Qdrant 통합 컨테이너 |
 
-### 대안
+### 언어 선택 (미확정)
 
-| 구성요소 | 대안 | 트레이드오프 |
-|----------|------|--------------|
-| **VectorDB** | Qdrant, Milvus, Pinecone | Qdrant: 더 빠름 / Pinecone: 클라우드 |
-| **Embedding** | OpenAI Ada, Cohere | 더 정확하지만 API 비용 발생 |
-| **AI 청킹** | GPT-4, Claude | 더 정확하지만 비용 높음 |
+| 옵션 | 장점 | 단점 |
+|------|------|------|
+| **Python** | LangChain 등 AI 생태계 풍부, 청킹 라이브러리 다양 | - |
+| **TypeScript** | 타입 안정성, MCP SDK 성숙 | AI 라이브러리가 Python 대비 적음 (그러나 LangChain.js 등 존재) |
+
+→ 둘 다 HTTP/SSE MCP 서버 구현 가능. AI 청킹 로직 복잡도에 따라 선택.
+
+### 외부 의존성
+
+| 구성요소 | 설명 |
+|----------|------|
+| **Ollama** | 임베딩 생성용 (호스트에서 실행, API 호출) |
 
 ---
 
@@ -222,33 +353,25 @@ interface MetaIndex {
 
 ### Phase 1: 기본 구조 (MVP)
 
-- [ ] MCP 서버 스캐폴딩 (TypeScript)
-- [ ] ChromaDB 연동
+- [ ] Docker 환경 구성 (Dockerfile, docker-compose)
+- [ ] MCP 서버 스캐폴딩 (HTTP/SSE)
+- [ ] Qdrant embedded 연동
 - [ ] Ollama 임베딩 연동
-- [ ] 기본 도구 구현: `memory_save`, `memory_search`
-- [ ] 단순 청킹 (단락 기준)
+- [ ] 기본 도구 구현: `scribe`, `memorize`
 
-### Phase 2: AI 청킹
-
-- [ ] AI 청킹 프롬프트 설계
-- [ ] 메타데이터 자동 추출 (topic, keywords, questions)
-- [ ] 청킹 품질 검증 로직
-
-### Phase 3: 계층적 인덱스
+### Phase 2: 계층적 인덱스
 
 - [ ] Topic 자동 생성/업데이트
 - [ ] MetaIndex 관리
-- [ ] `get_memory_index` 구현
-- [ ] 세션 시작 시 자동 로드 (시스템 프롬프트 연동)
+- [ ] `get_index` 구현
 
-### Phase 4: 고급 기능
+### Phase 3: 고급 기능
 
 - [ ] 중복 감지 및 병합
-- [ ] 관계 추출 (Entity 간 관계)
 - [ ] 시간 기반 감쇠 (오래된 정보 중요도 하락)
 - [ ] 스코프 기반 필터링 (프로젝트별 기억 분리)
 
-### Phase 5: 운영 기능
+### Phase 4: 운영 기능
 
 - [ ] 백업/복원
 - [ ] 통계 대시보드
@@ -259,32 +382,27 @@ interface MetaIndex {
 ## 디렉토리 구조 (예정)
 
 ```
-memorize/
+spellbook/
 ├── src/
-│   ├── index.ts              # MCP 서버 진입점
-│   ├── tools/                # MCP 도구 구현
-│   │   ├── search.ts
-│   │   ├── save.ts
-│   │   ├── index.ts
-│   │   └── admin.ts
+│   ├── main.py (또는 index.ts)    # MCP 서버 진입점
+│   ├── tools/                      # MCP 도구 구현
+│   │   ├── memorize.py             # 검색/읽기 도구
+│   │   ├── scribe.py               # 저장/쓰기 도구
+│   │   ├── index.py                # 인덱스 도구
+│   │   └── admin.py                # 관리 도구
 │   ├── core/
-│   │   ├── chunker.ts        # AI 청킹 로직
-│   │   ├── embedder.ts       # 임베딩 생성
-│   │   ├── searcher.ts       # 검색 로직
-│   │   └── indexer.ts        # 목차 관리
+│   │   ├── embedder.py             # 임베딩 생성 (Ollama 호출)
+│   │   ├── searcher.py             # 검색 로직
+│   │   └── indexer.py              # 목차 관리
 │   ├── db/
-│   │   ├── chroma.ts         # ChromaDB 연동
-│   │   └── index-store.ts    # 메타 목차 저장소
+│   │   ├── qdrant.py               # Qdrant 연동
+│   │   └── index_store.py          # 메타 목차 저장소
 │   └── types/
-│       └── index.ts          # 타입 정의
-├── data/                     # 로컬 데이터 저장
-│   ├── chroma/               # ChromaDB 데이터
-│   └── index.json            # 메타 목차
-├── prompts/                  # AI 청킹용 프롬프트
-│   └── chunking.md
-├── package.json
-├── tsconfig.json
-└── CLAUDE.md                 # 이 파일
+│       └── models.py               # 타입/모델 정의
+├── Dockerfile
+├── docker-compose.yml
+├── requirements.txt (또는 package.json)
+└── CLAUDE.md                       # 이 파일
 ```
 
 ---
@@ -296,42 +414,61 @@ memorize/
 ```json
 {
   "mcpServers": {
-    "memorize": {
-      "command": "node",
-      "args": ["/Users/ljh/workspace/etc/memorize/dist/index.js"],
-      "env": {
-        "OLLAMA_HOST": "http://localhost:11434",
-        "DATA_PATH": "/Users/ljh/.claude/memorize-data"
-      }
+    "spellbook": {
+      "url": "http://localhost:8000"
     }
   }
 }
 ```
 
-### 시스템 프롬프트 가이드
+### Docker 실행
 
-세션 시작 시 Claude가 기억 시스템을 활용하도록 안내:
+```bash
+# 컨테이너 실행
+docker run -d \
+  --name spellbook \
+  -p 8000:8000 \
+  -v ~/.claude/spellbook-data:/data \
+  -e OLLAMA_HOST=http://host.docker.internal:11434 \
+  spellbook:latest
 
+# 또는 docker-compose
+docker-compose up -d
 ```
-당신은 Memorize 메모리 시스템에 접근할 수 있습니다.
 
-세션 시작 시:
-1. get_memory_index()를 호출하여 어떤 기억이 있는지 확인하세요.
+### 사용 지침 예시
 
-질문에 답할 때:
-1. 관련 기억이 있을 수 있다면 memory_search(query)로 검색하세요.
-2. 검색 결과를 참고하여 답변하세요.
+Spellbook을 활용하려면 별도의 지침(CLAUDE.md, 시스템 프롬프트 등)에서 사용 규칙을 정의해야 한다.
 
-새로운 정보를 학습했을 때:
-1. 중요한 정보는 memory_save(content)로 저장하세요.
-2. 사용자 선호도, 프로젝트 정보, 결정 사항 등을 기억하세요.
+**예시: 프로젝트별 CLAUDE.md에 추가**
+
+```markdown
+## Spellbook 사용 규칙
+
+### 언제 memorize (검색)
+- 세션 시작 시 get_index()로 목차 확인
+- 사용자가 과거 결정 사항을 물을 때
+- 프로젝트 컨벤션이나 설정을 확인할 때
+
+### 언제 scribe (저장)
+- 중요한 아키텍처 결정이 내려졌을 때
+- 사용자 선호도가 확인되었을 때
+- 반복적으로 참조할 정보가 생겼을 때
+
+### 저장하지 않을 것
+- 일시적인 디버깅 정보
+- 코드 자체 (코드는 Git에)
+- 쉽게 검색 가능한 공개 정보
 ```
+
+**핵심: MCP는 저장/검색만 제공하고, 정책은 사용자가 정의한다.**
 
 ---
 
 ## 참고 자료
 
 - [MCP 공식 문서](https://modelcontextprotocol.io/)
-- [ChromaDB 문서](https://docs.trychroma.com/)
+- [Qdrant 문서](https://qdrant.tech/documentation/)
 - [Ollama Embedding](https://ollama.com/blog/embedding-models)
+- [LangChain.js](https://js.langchain.com/) / [LangChain Python](https://python.langchain.com/)
 - [RAG Memory MCP](https://github.com/ttommyth/rag-memory-mcp) - 참고용 기존 구현
