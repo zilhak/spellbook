@@ -7,8 +7,8 @@ VectorDB를 사용하여 의미 기반 검색으로 관련 정보를 빠르게 �
 
 ### 핵심 목표
 
-1. **단순한 저장소**: 저장(scribe)과 검색(memorize) 기능만 제공
-2. **의미 기반 검색**: 키워드가 아닌 의미로 관련 정보 검색
+1. **단순한 저장소**: 저장(scribe)과 검색(memorize/recall) 기능만 제공
+2. **이중 검색 지원**: 의미 기반 검색 + 키워드 기반 검색을 별도 API로 제공
 3. **효율적인 컨텍스트 사용**: 필요한 정보만 로드하여 토큰 절약
 
 ### 청킹 책임
@@ -163,15 +163,29 @@ Level 2: 실제 청크 (VectorDB)
 - **세부 목차**: 각 카테고리 내 토픽 목록 (필요 시 검색)
 - **청크**: 실제 상세 내용 (필요 시 검색)
 
-### 3. Scribe vs Memorize 흐름
+### 3. 이중 검색 방식
+
+| 도구 | 방식 | 용도 | 예시 |
+|------|------|------|------|
+| `memorize` | 의미 기반 (벡터 유사도) | 비슷한 맥락/개념 찾기 | "Docker 컨테이너 설정 방법" |
+| `find` | 키워드 기반 (Full-text) | 정확한 용어 매칭 | `["Qdrant", "embedded"]` |
+
+**언제 무엇을 쓸까?**
+- `memorize`: 질문 형태, 맥락 파악, 관련 정보 탐색
+- `find`: 특정 기술명, 프로젝트명, 정확한 용어 검색
+
+### 4. Scribe vs Memorize 흐름
 
 ```
 [Scribe - 저장]
 Agent가 청크 정리 → scribe(chunk) → MCP가 임베딩 → VectorDB 저장
                                                → 목차 업데이트
 
-[Memorize - 검색]
-Agent가 질문 → memorize(query) → MCP가 임베딩 → 유사도 검색 → 청크 반환
+[Memorize - 의미 기반 검색]
+Agent가 질문 → memorize(query) → MCP가 임베딩 → 벡터 유사도 검색 → 청크 반환
+
+[Find - 키워드 기반 검색]
+Agent가 키워드 → find(keywords) → Full-text search → 청크 반환
 ```
 
 ---
@@ -239,7 +253,8 @@ MCP는 HTTP/SSE 방식으로 독립 서버로 실행된다.
 | 도구 | 설명 | 파라미터 |
 |------|------|----------|
 | `get_index` | 메타 목차 반환 (세션 시작 시 호출) | `scope?`: 범위 제한 |
-| `memorize` | 의미 기반 검색 | `query`, `limit?`, `filter?` |
+| `memorize` | 의미 기반 검색 (벡터 유사도) | `query`, `limit?`, `filter?` |
+| `find` | 키워드 기반 검색 (Full-text search) | `keywords`, `limit?`, `filter?` |
 | `get_topic` | 특정 토픽의 모든 청크 조회 | `topic_id` |
 
 ### Scribe (쓰기/저장)
