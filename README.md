@@ -21,7 +21,51 @@ AI 에이전트 개인화 과정에서 축적되는 정보들을 VectorDB에 저
 
 ## 빠른 시작
 
-### 1. 사전 요구사항
+### 방법 1: GitHub 직접 설치 (최소 명령어) ⚡
+
+**가장 간단한 방법** - `prepare` 스크립트가 자동으로 빌드
+
+```bash
+# 한 줄 설치 (prepare 스크립트가 자동으로 tsc 실행)
+npm install -g github:username/spellbook
+
+# 사전 준비 (Qdrant + Ollama)
+docker run -d -p 6333:6333 qdrant/qdrant && ollama pull nomic-embed-text
+
+# 환경 변수 (선택적, 기본값 사용 가능)
+export QDRANT_URL=http://localhost:6333
+export OLLAMA_HOST=http://localhost:11434
+
+# 실행
+spellbook
+```
+
+**동작 원리**:
+1. `npm install` 실행
+2. `prepare` 스크립트 자동 실행 (`npm run build`)
+3. TypeScript 컴파일 → `dist/` 생성
+4. CLI 명령어 등록
+
+**장점**:
+- ✅ dist를 커밋하지 않아도 됨
+- ✅ 설치 시 자동 빌드
+- ✅ 한 줄 명령어로 설치
+- ✅ 최신 main 브랜치 자동 추적
+
+**필요 조건**:
+- Node.js 20+ (TypeScript 컴파일용)
+
+**업데이트**:
+```bash
+npm update -g github:username/spellbook
+# 자동으로 prepare 스크립트 재실행 → 재빌드
+```
+
+---
+
+### 방법 2: Docker Compose (완전 자동화)
+
+#### 1. 사전 요구사항
 
 - Docker & Docker Compose
 - Ollama (호스트에서 실행)
@@ -31,14 +75,14 @@ AI 에이전트 개인화 과정에서 축적되는 정보들을 VectorDB에 저
 ollama pull nomic-embed-text
 ```
 
-### 2. 환경 설정
+#### 2. 환경 설정
 
 ```bash
 cp .env.example .env
 # 필요시 .env 수정 (기본값으로도 동작)
 ```
 
-### 3. 실행
+#### 3. 실행
 
 ```bash
 # Docker Compose로 실행
@@ -48,14 +92,94 @@ docker-compose up -d
 docker-compose logs -f spellbook
 ```
 
-### 4. 시스템 가이드 seed
+#### 4. 시스템 가이드 seed
 
 ```bash
 # 최초 1회만
 docker-compose exec spellbook pnpm run seed
 ```
 
-### 5. Claude Code 설정
+### 방법 3: npm Registry 설치
+
+**npm에 배포된 후** 사용 가능
+
+```bash
+# npm 레지스트리에서 설치
+npm install -g spellbook
+
+# 사전 준비
+docker run -d -p 6333:6333 qdrant/qdrant && ollama pull nomic-embed-text
+
+# 실행
+spellbook
+```
+
+---
+
+### 방법 4: npx 원라이너 (설치 없이)
+
+```bash
+# 설치 없이 즉시 실행 (npm registry)
+npx spellbook
+
+# 또는 GitHub에서
+npx github:username/spellbook
+```
+
+**장점**: 글로벌 설치 없이 일회성 실행
+
+---
+
+### 방법 5: 로컬 개발 모드
+
+```bash
+# 저장소 클론
+git clone https://github.com/username/spellbook.git
+cd spellbook
+
+# 의존성 설치
+pnpm install
+
+# Qdrant만 Docker로
+docker run -d -p 6333:6333 qdrant/qdrant
+
+# 개발 모드 (hot reload)
+pnpm run dev
+```
+
+---
+
+## 설치 방법 비교
+
+| 방법 | 명령어 수 | 빌드 | dist 커밋 | 의존성 | 권장 용도 |
+|------|-----------|------|-----------|--------|-----------|
+| **GitHub 직접** | 1개 | 자동 (prepare) | ❌ | 자동 | **프로덕션** ⭐ |
+| **Docker Compose** | 1개 | Docker 내부 | ❌ | 자동 | **완전 격리** |
+| **npm Registry** | 1개 | 자동 (prepare) | ❌ | 자동 | **공식 배포 후** |
+| **npx** | 1개 | 자동 (prepare) | ❌ | 자동 | **일회성 테스트** |
+| **로컬 개발** | 3개 | 수동 | ❌ | 수동 | **기여/개발** |
+
+### 최소 명령어 순위
+
+1. **GitHub 직접 설치**: `npm i -g github:user/spellbook` (⭐ 가장 추천)
+   - prepare 스크립트가 자동 빌드
+   - dist를 커밋하지 않아도 됨
+
+2. **Docker Compose**: `docker-compose up -d`
+   - Docker가 알아서 빌드
+
+3. **npx**: `npx github:user/spellbook`
+   - 일회성 실행
+
+4. **npm Registry**: `npm i -g spellbook` (배포 후)
+   - npm publish 필요
+
+5. **로컬 개발**: `git clone && pnpm install && pnpm dev`
+   - 개발자용
+
+---
+
+### Claude Code 설정
 
 `~/.claude/mcp.json`:
 ```json

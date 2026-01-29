@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * Spellbook MCP 서버 진입점
  *

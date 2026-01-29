@@ -1,0 +1,37 @@
+# Source files (빌드된 dist만 배포)
+src/
+tsconfig.json
+
+# Development files
+.github/
+.vscode/
+.idea/
+
+# Testing
+*.test.js
+*.test.ts
+coverage/
+
+# CI/CD
+.gitlab-ci.yml
+.travis.yml
+
+# Docker (Docker는 GitHub에만)
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Documentation (README는 포함)
+CLAUDE.md
+
+# Environment
+.env
+.env.*
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
