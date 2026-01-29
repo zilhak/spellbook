@@ -1,34 +1,64 @@
-# Spellbook
+# Spellbook 🔮
 
-AI 에이전트 개인화 과정에서 축적되는 md 문서들을 보관하고 검색하는 MCP 서버.
+VectorDB 기반 AI Agent 메모리 MCP 서버
 
 ## 개요
 
-점점 늘어나는 CLAUDE.md, 설정 문서, 결정 기록들을 VectorDB에 저장하고 의미 기반으로 검색한다.
+AI 에이전트 개인화 과정에서 축적되는 정보들을 VectorDB에 저장하고 의미 기반으로 검색합니다.
 
-- **Scribe**: 정보를 저장
-- **Memorize**: 정보를 검색
+- **Scribe**: 정보 저장 (REST 모드에서만)
+- **Memorize**: 의미 기반 검색
+- **Find**: 키워드 기반 검색
 
-**Spellbook은 저장/검색만 제공한다.** 무엇을 저장하고 언제 검색할지는 별도 지침으로 정의해야 한다.
+**Spellbook은 단순한 저장소입니다.** 무엇을 저장하고 언제 검색할지는 사용자가 결정합니다.
 
-## 기술 스택
+## 핵심 특징
 
-- MCP (HTTP/SSE)
-- Qdrant (embedded)
-- Docker
+- ✅ **REST 상태 관리**: 청킹 일관성 보장
+- ✅ **이중 검색**: 의미 기반 + 키워드 기반
+- ✅ **nomic-embed-text**: 768차원, 한글/영어 우수
+- ✅ **HTTP/SSE MCP**: Docker로 간편 배포
 
-## 사용법
+## 빠른 시작
+
+### 1. 사전 요구사항
+
+- Docker & Docker Compose
+- Ollama (호스트에서 실행)
 
 ```bash
-docker run -d \
-  --name spellbook \
-  -p 8000:8000 \
-  -v ~/.claude/spellbook-data:/data \
-  spellbook:latest
+# Ollama 설치 후
+ollama pull nomic-embed-text
 ```
 
+### 2. 환경 설정
+
+```bash
+cp .env.example .env
+# 필요시 .env 수정 (기본값으로도 동작)
+```
+
+### 3. 실행
+
+```bash
+# Docker Compose로 실행
+docker-compose up -d
+
+# 로그 확인
+docker-compose logs -f spellbook
+```
+
+### 4. 시스템 가이드 seed
+
+```bash
+# 최초 1회만
+docker-compose exec spellbook pnpm run seed
+```
+
+### 5. Claude Code 설정
+
+`~/.claude/mcp.json`:
 ```json
-// ~/.claude/mcp.json
 {
   "mcpServers": {
     "spellbook": {
@@ -38,6 +68,102 @@ docker run -d \
 }
 ```
 
+## 사용법
+
+### REST 워크플로우
+
+```typescript
+// 1. REST 모드 진입
+const session = await rest();
+// → {session_id, chunking_guide, metadata_rules}
+
+// 2. 청크 저장
+await scribe({
+  chunk: {
+    text: "Docker Compose는...",
+    metadata: {
+      topic_id: "인프라",
+      category: "technology",
+      keywords: ["Docker", "Compose"],
+      questions: ["Docker Compose 설정 방법은?"],
+      entities: [{name: "Docker", type: "technology"}],
+      importance: "high"
+    }
+  },
+  session_id: session.session_id
+});
+
+// 3. REST 종료
+await rest_end(session.session_id);
+```
+
+### 검색
+
+```typescript
+// 의미 기반 검색
+await memorize({query: "Docker 컨테이너 설정"});
+
+// 키워드 검색
+await find({keywords: ["Docker", "Qdrant"]});
+```
+
+## 개발
+
+### 로컬 실행
+
+```bash
+# 의존성 설치
+pnpm install
+
+# Qdrant만 Docker로
+docker-compose up -d qdrant
+
+# 개발 모드
+pnpm run dev
+
+# 빌드
+pnpm run build
+```
+
+### 타입체크
+
+```bash
+pnpm run typecheck
+```
+
+## MCP 도구
+
+| 도구 | 설명 | 제약 |
+|------|------|------|
+| `rest` | REST 모드 시작 | - |
+| `rest_end` | REST 모드 종료 | - |
+| `scribe` | 청크 저장 | **REST 모드 필수** |
+| `memorize` | 의미 검색 | - |
+| `find` | 키워드 검색 | - |
+| `get_topic` | 토픽 조회 | - |
+| `erase` | 청크 삭제 | - |
+| `stats` | 통계 | - |
+| `get_index` | 메타 목차 | - |
+| `export` | JSON 백업 | - |
+
+## 아키텍처
+
+```
+Claude Code
+    │ HTTP
+    ▼
+Spellbook (HTTP/SSE MCP Server)
+    │
+    ├─ REST 세션 관리
+    ├─ 임베딩 (Ollama + nomic-embed-text)
+    └─ VectorDB (Qdrant)
+```
+
 ## 상세 문서
 
-[CLAUDE.md](./CLAUDE.md) 참조
+- [CLAUDE.md](./CLAUDE.md) - 프로젝트 전체 설계 문서
+- [src/data/system-guides.ts](./src/data/system-guides.ts) - 청킹 가이드
+
+## 라이선스
+
+MIT

@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  spellbook:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - HOST=0.0.0.0
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_COLLECTION=chunks
+      - OLLAMA_HOST=http://host.docker.internal:11434
+      - EMBEDDING_MODEL=nomic-embed-text
+      - EMBEDDING_DIMENSIONS=768
+      - EMBEDDING_CONTEXT_LENGTH=8192
+    depends_on:
+      - qdrant
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    restart: unless-stopped
+
+volumes:
+  qdrant_storage:

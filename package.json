@@ -1,0 +1,31 @@
+{
+  "name": "spellbook",
+  "version": "0.1.0",
+  "description": "VectorDB-based memory MCP server for AI agents",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "seed": "tsx src/scripts/seed-system-guides.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": ["mcp", "vectordb", "qdrant", "memory", "ai-agent"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "@qdrant/js-client-rest": "^1.11.0",
+    "axios": "^1.7.0",
+    "express": "^4.21.2",
+    "uuid": "^11.0.3"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.5",
+    "@types/uuid": "^10.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
