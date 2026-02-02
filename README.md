@@ -349,24 +349,32 @@ curl -X POST http://localhost:8000/execute \
 
 #### 2. import 도구 (복원)
 
-**상태**: ❌ 미구현
-
-현재는 수동 복원 필요:
-
-```typescript
-// backup.json 읽기
-const backup = JSON.parse(fs.readFileSync('backup.json'));
-
-// REST 모드 시작
-const session = await rest();
-
-// 각 청크 복원 (임베딩 재생성)
-for (const chunk of backup.chunks) {
-  await scribe({ chunk, session_id: session.session_id });
-}
-
-await rest_end(session.session_id);
+```bash
+# JSON 백업 복원
+curl -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -H "mcp-session-id: YOUR_SESSION_ID" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {
+      "name": "import",
+      "arguments": {
+        "data": {
+          "chunks": [
+            {"text": "복원할 내용", "category": "knowledge"}
+          ]
+        }
+      }
+    },
+    "id": 1
+  }'
 ```
+
+**특징**:
+- REST 세션 없이 직접 복원 가능
+- 각 청크에 대해 임베딩 자동 재생성
+- 성공/실패 개수 반환
 
 ---
 
@@ -464,6 +472,7 @@ pnpm run typecheck
 | `stats` | 통계 | - |
 | `get_index` | 메타 목차 | - |
 | `export` | JSON 백업 | - |
+| `import` | JSON 복원 | - |
 
 ## 아키텍처
 

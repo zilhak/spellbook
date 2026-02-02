@@ -20,7 +20,13 @@
     "typecheck": "tsc --noEmit",
     "prepare": "npm run build"
   },
-  "keywords": ["mcp", "vectordb", "qdrant", "memory", "ai-agent"],
+  "keywords": [
+    "mcp",
+    "vectordb",
+    "qdrant",
+    "memory",
+    "ai-agent"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
@@ -28,7 +34,8 @@
     "@qdrant/js-client-rest": "^1.11.0",
     "axios": "^1.7.0",
     "express": "^4.21.2",
-    "uuid": "^11.0.3"
+    "uuid": "^11.0.3",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",

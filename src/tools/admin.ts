@@ -3,16 +3,38 @@
  *
  * - stats: 저장소 통계
  * - export: 백업 내보내기
+ * - import: 백업 가져오기
  * - get_index: 메타 목차 조회
  */
 
 import type { QdrantService } from '../db/qdrant.js';
 import type { SearchService } from '../core/searcher.js';
+import type { EmbeddingService } from '../core/embedder.js';
+
+interface BackupChunk {
+  id?: string;
+  text: string;
+  topic_id?: string;
+  category?: string;
+  keywords?: string[];
+  questions?: string[];
+  entities?: any[];
+  importance?: string;
+  source?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+interface BackupData {
+  version?: string;
+  chunks: BackupChunk[];
+}
 
 export class AdminTools {
   constructor(
     private qdrant: QdrantService,
-    private searcher: SearchService
+    private searcher: SearchService,
+    private embedder: EmbeddingService
   ) {}
 
   /**
@@ -149,6 +171,96 @@ export class AdminTools {
             type: 'text',
             text: JSON.stringify({
               error: error.message,
+            }, null, 2),
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+
+  /**
+   * import 도구 실행 (JSON 백업 복원)
+   *
+   * 1. JSON 파싱 및 검증
+   * 2. 각 chunk에 대해 임베딩 재생성
+   * 3. VectorDB에 저장
+   */
+  async import(data: BackupData): Promise<any> {
+    try {
+      // 데이터 검증
+      if (!data || !Array.isArray(data.chunks)) {
+        throw new Error('유효하지 않은 백업 데이터: chunks 배열이 필요합니다.');
+      }
+
+      const results = {
+        total: data.chunks.length,
+        success: 0,
+        failed: 0,
+        errors: [] as string[],
+      };
+
+      // 각 chunk 처리
+      for (let i = 0; i < data.chunks.length; i++) {
+        const chunk = data.chunks[i];
+
+        try {
+          // 필수 필드 검증
+          if (!chunk.text) {
+            throw new Error(`청크 ${i}: text 필드가 없습니다.`);
+          }
+
+          // ID 생성 (없으면)
+          const id = chunk.id || `imported-${Date.now()}-${i}`;
+
+          // 임베딩 생성
+          const embedding = await this.embedder.embed(chunk.text);
+
+          // payload 구성
+          const payload = {
+            text: chunk.text,
+            topic_id: chunk.topic_id || 'imported',
+            category: chunk.category || 'imported',
+            keywords: chunk.keywords || [],
+            questions: chunk.questions || [],
+            entities: chunk.entities || [],
+            importance: chunk.importance || 'medium',
+            source: chunk.source || 'backup-import',
+            created_at: chunk.created_at || new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+
+          // VectorDB 저장
+          await this.qdrant.upsertChunk(id, embedding, payload);
+          results.success++;
+
+        } catch (chunkError: any) {
+          results.failed++;
+          results.errors.push(chunkError.message);
+        }
+      }
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              status: results.failed === 0 ? 'success' : 'partial',
+              message: `${results.success}/${results.total} 청크 가져오기 완료`,
+              ...results,
+            }, null, 2),
+          },
+        ],
+      };
+
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              status: 'error',
+              message: error.message,
             }, null, 2),
           },
         ],

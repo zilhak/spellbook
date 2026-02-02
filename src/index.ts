@@ -50,7 +50,7 @@ async function main() {
     const restTools = new RestTools(sessionManager);
     const scribeTools = new ScribeTools(sessionManager, searcher, embedder, qdrant);
     const memorizeTools = new MemorizeTools(searcher);
-    const adminTools = new AdminTools(qdrant, searcher);
+    const adminTools = new AdminTools(qdrant, searcher, embedder);
 
     // 7. MCP 서버 생성 및 시작
     const server = new MCPServer({
