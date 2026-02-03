@@ -9,6 +9,7 @@
 import type { EmbeddingService } from './embedder.js';
 import type { QdrantService } from '../db/qdrant.js';
 import type { SearchResult } from '../types/models.js';
+import { convertToQdrantFilter } from './filter-utils.js';
 
 export class SearchService {
   constructor(
@@ -27,11 +28,14 @@ export class SearchService {
     // 쿼리 임베딩 생성
     const queryEmbedding = await this.embedder.embed(query);
 
+    // 필터 변환 (단순 형식 → Qdrant 형식)
+    const qdrantFilter = convertToQdrantFilter(filter || {});
+
     // 벡터 유사도 검색
     const results = await this.qdrant.search(
       queryEmbedding,
       limit,
-      filter,
+      qdrantFilter,
       0.7 // 유사도 임계값
     );
 
@@ -62,9 +66,12 @@ export class SearchService {
       })),
     };
 
+    // 사용자 필터 변환 (단순 형식 → Qdrant 형식)
+    const userFilter = convertToQdrantFilter(filter || {});
+
     // 필터 병합
-    const combinedFilter = filter
-      ? { must: [filter, keywordFilter] }
+    const combinedFilter = userFilter?.must
+      ? { must: [...userFilter.must, keywordFilter] }
       : keywordFilter;
 
     // 키워드로 임베딩 생성 (의미 확장)

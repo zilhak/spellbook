@@ -463,11 +463,11 @@ interface MetaIndex {
 | **MCP 전송** | HTTP/SSE | Docker 내부에서 독립 서버로 실행 |
 | **배포** | Docker | MCP 서버 + Qdrant 통합 컨테이너 |
 
-### 언어 선택
+### 런타임 선택
 
 | 구성요소 | 선택 | 이유 |
 |----------|------|------|
-| **런타임** | Node.js (TypeScript) | 타입 안정성, MCP SDK 성숙, 비동기 I/O 성능 우수 |
+| **런타임** | Bun (TypeScript) | 빠른 시작, TypeScript 네이티브 실행, 빌드 불필요 |
 | **MCP SDK** | @modelcontextprotocol/sdk | 공식 TypeScript SDK, HTTP/SSE 지원 |
 | **임베딩** | Ollama API 호출 | REST API로 간단히 통합 가능 |
 
@@ -583,7 +583,7 @@ spellbook/
 {
   "mcpServers": {
     "spellbook": {
-      "url": "http://localhost:8000"
+      "url": "http://localhost:17950"
     }
   }
 }
@@ -595,7 +595,7 @@ spellbook/
 # 컨테이너 실행
 docker run -d \
   --name spellbook \
-  -p 8000:8000 \
+  -p 17950:17950 \
   -v ~/.claude/spellbook-data:/data \
   -e OLLAMA_HOST=http://host.docker.internal:11434 \
   spellbook:latest
@@ -690,29 +690,33 @@ await rest_end(session.session_id);
     "@modelcontextprotocol/sdk": "^1.0.0",
     "@qdrant/js-client-rest": "^1.11.0",
     "express": "^4.18.2",
-    "axios": "^1.6.0",
-    "uuid": "^9.0.0"
+    "uuid": "^9.0.0",
+    "zod": "^3.24.0"
   },
   "devDependencies": {
     "typescript": "^5.3.0",
     "@types/node": "^20.0.0",
-    "@types/express": "^4.17.0",
-    "tsx": "^4.0.0"
+    "@types/express": "^4.17.0"
   }
 }
 ```
 
-### Qdrant 클라이언트 (Node.js)
+**Bun 사용 시 장점:**
+- `bun run src/index.ts` - TypeScript 직접 실행 (빌드 불필요)
+- `bun install` - 빠른 패키지 설치 (~1초)
+- tsx 의존성 불필요
+
+### Qdrant 클라이언트
 
 ```typescript
 import { QdrantClient } from '@qdrant/js-client-rest';
 
 const client = new QdrantClient({
-  url: 'http://localhost:6333', // Docker 내부 또는 embedded
+  url: 'http://localhost:17951', // Docker 내부 또는 embedded
 });
 ```
 
-**참고**: Qdrant는 JavaScript 클라이언트 라이브러리를 제공하지만, embedded 모드는 Rust/Python만 지원합니다. Node.js에서는 별도 Qdrant 서버 프로세스가 필요합니다.
+**참고**: Qdrant는 JavaScript 클라이언트 라이브러리를 제공하지만, embedded 모드는 Rust/Python만 지원합니다. Bun/Node.js에서는 별도 Qdrant 서버 프로세스가 필요합니다.
 
 **해결책**: Docker Compose로 Qdrant 컨테이너 별도 실행 (권장)
 
@@ -1028,7 +1032,7 @@ services:
   spellbook:
     build: .
     ports:
-      - "8000:8000"
+      - "17950:17950"
     environment:
       - OLLAMA_HOST=http://host.docker.internal:11434
       - QDRANT_URL=http://qdrant:6333
@@ -1042,7 +1046,7 @@ services:
   qdrant:
     image: qdrant/qdrant:latest
     ports:
-      - "6333:6333"
+      - "17951:6333"
     volumes:
       - qdrant_storage:/qdrant/storage
 

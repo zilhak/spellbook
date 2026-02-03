@@ -27,7 +27,7 @@ cp .env.example .env
 QDRANT_DATA_PATH=/path/to/data
 
 # 서버 설정
-PORT=8000
+PORT=17950
 HOST=0.0.0.0
 
 # Qdrant 설정 (Docker Compose 사용 시 변경 불필요)
@@ -85,7 +85,7 @@ docker-compose exec spellbook bun run seed
 
 ```bash
 # 서버 상태 확인
-curl http://localhost:8000/health
+curl http://localhost:17950/health
 
 # 데이터 디렉토리 확인
 ls -la ${QDRANT_DATA_PATH}
@@ -93,13 +93,21 @@ ls -la ${QDRANT_DATA_PATH}
 
 ### 8. Claude Code MCP 설정
 
+**방법 1: CLI 명령어 (권장)**
+
+```bash
+claude mcp add --transport http spellbook http://localhost:17950/mcp
+```
+
+**방법 2: 수동 설정**
+
 `~/.claude/mcp.json` 파일에 추가:
 
 ```json
 {
   "mcpServers": {
     "spellbook": {
-      "url": "http://localhost:8000/mcp"
+      "url": "http://localhost:17950/mcp"
     }
   }
 }
@@ -144,7 +152,7 @@ curl -s "${OLLAMA_HOST}/api/tags" && echo "OK" || echo "FAIL"
 MCP 서버 포트입니다.
 
 **유효한 값:** 1-65535 범위의 정수
-**기본값:** 8000
+**기본값:** 17950
 
 **검증 방법:**
 ```bash
@@ -169,7 +177,7 @@ cd spellbook
 # 2. .env 파일 생성
 cat > .env << EOF
 QDRANT_DATA_PATH=./data/qdrant
-PORT=8000
+PORT=17950
 HOST=0.0.0.0
 QDRANT_URL=http://qdrant:6333
 QDRANT_COLLECTION=chunks
@@ -195,7 +203,7 @@ sleep 10
 docker-compose exec -T spellbook bun run seed
 
 # 8. 상태 확인
-curl http://localhost:8000/health
+curl http://localhost:17950/health
 
 echo "✅ 설치 완료!"
 ```

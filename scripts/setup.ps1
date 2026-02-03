@@ -95,9 +95,9 @@ Write-Host ""
 # 2. 서버 포트 설정
 Write-Host "🌐 서버 설정" -ForegroundColor Blue
 do {
-    $PORT_INPUT = Read-Host "MCP 서버 포트 [기본값: 8000]"
+    $PORT_INPUT = Read-Host "MCP 서버 포트 [기본값: 17950]"
     if ([string]::IsNullOrWhiteSpace($PORT_INPUT)) {
-        $PORT = 8000
+        $PORT = 17950
     } else {
         $PORT = [int]$PORT_INPUT
     }
@@ -213,7 +213,7 @@ EMBEDDING_CONTEXT_LENGTH=$EMBEDDING_CONTEXT_LENGTH
     Write-Host "   docker-compose up -d"
     Write-Host ""
     Write-Host "3. 시스템 가이드 초기화:"
-    Write-Host "   docker-compose exec spellbook pnpm run seed"
+    Write-Host "   docker-compose exec spellbook bun run seed"
     Write-Host ""
     Write-Host "4. Claude Code MCP 설정:"
     Write-Host "   ~/.claude/mcp.json에 다음 추가:"

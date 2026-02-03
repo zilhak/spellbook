@@ -130,8 +130,8 @@ echo ""
 # 2. 서버 포트 설정
 echo -e "${BLUE}🌐 서버 설정${NC}"
 while true; do
-    read -p "MCP 서버 포트 [기본값: 8000]: " PORT
-    PORT=${PORT:-8000}
+    read -p "MCP 서버 포트 [기본값: 17950]: " PORT
+    PORT=${PORT:-17950}
 
     if validate_port "$PORT"; then
         echo -e "${GREEN}✓ 유효한 포트입니다: $PORT${NC}"
@@ -216,7 +216,7 @@ if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
     echo "   docker-compose up -d"
     echo ""
     echo "3. 시스템 가이드 초기화:"
-    echo "   docker-compose exec spellbook pnpm run seed"
+    echo "   docker-compose exec spellbook bun run seed"
     echo ""
     echo "4. Claude Code MCP 설정:"
     echo "   ~/.claude/mcp.json에 다음 추가:"

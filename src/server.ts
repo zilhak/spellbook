@@ -15,6 +15,7 @@ import type { RestTools } from './tools/rest.js';
 import type { ScribeTools } from './tools/scribe.js';
 import type { MemorizeTools } from './tools/memorize.js';
 import type { AdminTools } from './tools/admin.js';
+import { getFilterGuide } from './core/filter-utils.js';
 
 export interface ToolHandlers {
   rest: RestTools;
@@ -203,6 +204,17 @@ export class MCPServer {
     );
 
     server.tool(
+      'filter_guide',
+      '필터 사용법 가이드 조회',
+      {},
+      async () => {
+        return {
+          content: [{ type: 'text', text: getFilterGuide() }],
+        };
+      }
+    );
+
+    server.tool(
       'export',
       'JSON 백업 내보내기',
       {},
@@ -334,7 +346,7 @@ export class MCPServer {
         tools: [
           'rest', 'rest_end', 'scribe', 'erase', 'revise',
           'memorize', 'find', 'get_topic',
-          'stats', 'get_index', 'export', 'import',
+          'stats', 'get_index', 'filter_guide', 'export', 'import',
         ],
       });
     });

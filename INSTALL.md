@@ -121,7 +121,7 @@ docker-compose exec spellbook bun run seed
 
 ```bash
 # 서버 상태 확인
-curl http://localhost:8000/health
+curl http://localhost:17950/health
 
 # 데이터 저장 확인
 ls -la /path/to/your/data
@@ -131,12 +131,20 @@ ls -la /path/to/your/data
 
 이제 Claude Code에서 MCP 설정을 추가하세요:
 
+**방법 1: CLI 명령어 (권장)**
+
+```bash
+claude mcp add --transport http spellbook http://localhost:17950/mcp
+```
+
+**방법 2: 수동 설정**
+
 `~/.claude/mcp.json`:
 ```json
 {
   "mcpServers": {
     "spellbook": {
-      "url": "http://localhost:8000/mcp"
+      "url": "http://localhost:17950/mcp"
     }
   }
 }

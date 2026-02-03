@@ -20,7 +20,7 @@ function getRequiredEnv(key: string): string {
 // 서버 설정 생성
 export function loadConfig(): ServerConfig {
   return {
-    port: parseInt(getEnvOrDefault('PORT', '8000'), 10),
+    port: parseInt(getEnvOrDefault('PORT', '17950'), 10),
     host: getEnvOrDefault('HOST', '0.0.0.0'),
 
     embedding: {
@@ -31,7 +31,7 @@ export function loadConfig(): ServerConfig {
     },
 
     qdrant: {
-      url: getEnvOrDefault('QDRANT_URL', 'http://localhost:6333'),
+      url: getEnvOrDefault('QDRANT_URL', 'http://localhost:17951'),
       collectionName: getEnvOrDefault('QDRANT_COLLECTION', 'chunks'),
     },
   };

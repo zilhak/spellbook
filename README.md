@@ -39,10 +39,10 @@ cd spellbook
 bun install
 
 # 사전 준비 (Qdrant + Ollama)
-docker run -d -p 6333:6333 qdrant/qdrant && ollama pull nomic-embed-text
+docker run -d -p 17951:6333 qdrant/qdrant && ollama pull nomic-embed-text
 
 # 환경 변수 (선택적, 기본값 사용 가능)
-export QDRANT_URL=http://localhost:6333
+export QDRANT_URL=http://localhost:17951
 export OLLAMA_HOST=http://localhost:11434
 
 # 실행
@@ -94,7 +94,7 @@ QDRANT_DATA_PATH=/path/to/your/data
 
 **선택적 설정**:
 ```bash
-PORT=8000
+PORT=17950
 QDRANT_COLLECTION=chunks
 OLLAMA_HOST=http://host.docker.internal:11434
 EMBEDDING_MODEL=nomic-embed-text
@@ -140,7 +140,7 @@ cd spellbook
 bun install
 
 # Qdrant만 Docker로
-docker run -d -p 6333:6333 qdrant/qdrant
+docker run -d -p 17951:6333 qdrant/qdrant
 
 # 개발 모드 (hot reload)
 bun run dev
@@ -160,12 +160,20 @@ bun run dev
 
 ### Claude Code 설정
 
+**방법 1: CLI 명령어 (권장)**
+
+```bash
+claude mcp add --transport http spellbook http://localhost:17950/mcp
+```
+
+**방법 2: 수동 설정**
+
 `~/.claude/mcp.json`:
 ```json
 {
   "mcpServers": {
     "spellbook": {
-      "url": "http://localhost:8000/mcp"
+      "url": "http://localhost:17950/mcp"
     }
   }
 }
@@ -240,12 +248,12 @@ docker-compose restart  # 데이터 그대로 복구
 
 ```bash
 # MCP 세션 초기화 후 export 호출
-curl -X POST http://localhost:8000/mcp \
+curl -X POST http://localhost:17950/mcp \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"initialize","params":{"clientInfo":{"name":"test"},"protocolVersion":"2024-11-05"},"id":1}'
 
 # 세션 ID로 export
-curl -X POST http://localhost:8000/mcp \
+curl -X POST http://localhost:17950/mcp \
   -H "Content-Type: application/json" \
   -H "mcp-session-id: YOUR_SESSION_ID" \
   -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"export","arguments":{}},"id":2}'
@@ -254,7 +262,7 @@ curl -X POST http://localhost:8000/mcp \
 #### import 도구 (복원)
 
 ```bash
-curl -X POST http://localhost:8000/mcp \
+curl -X POST http://localhost:17950/mcp \
   -H "Content-Type: application/json" \
   -H "mcp-session-id: YOUR_SESSION_ID" \
   -d '{

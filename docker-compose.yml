@@ -4,9 +4,9 @@ services:
   spellbook:
     build: .
     ports:
-      - "8000:8000"
+      - "${PORT:-17950}:${PORT:-17950}"
     environment:
-      - PORT=${PORT:-8000}
+      - PORT=${PORT:-17950}
       - HOST=${HOST:-0.0.0.0}
       - QDRANT_URL=http://qdrant:6333
       - QDRANT_COLLECTION=${QDRANT_COLLECTION:-chunks}
@@ -21,7 +21,7 @@ services:
   qdrant:
     image: qdrant/qdrant:latest
     ports:
-      - "6333:6333"
+      - "17951:6333"
     volumes:
       - ${QDRANT_DATA_PATH:-./data/qdrant}:/qdrant/storage
     restart: unless-stopped

@@ -8,6 +8,7 @@
 
 import type { SearchService } from '../core/searcher.js';
 import type { MemorizeRequest, FindRequest } from '../types/models.js';
+import { createFilterErrorMessage } from '../core/filter-utils.js';
 
 export class MemorizeTools {
   constructor(private searcher: SearchService) {}
@@ -45,12 +46,17 @@ export class MemorizeTools {
         ],
       };
     } catch (error: any) {
+      // 필터 관련 에러면 가이드 참조 메시지 추가
+      const errorMessage = args.filter
+        ? createFilterErrorMessage(error.message)
+        : error.message;
+
       return {
         content: [
           {
             type: 'text',
             text: JSON.stringify({
-              error: error.message,
+              error: errorMessage,
             }, null, 2),
           },
         ],
@@ -92,12 +98,17 @@ export class MemorizeTools {
         ],
       };
     } catch (error: any) {
+      // 필터 관련 에러면 가이드 참조 메시지 추가
+      const errorMessage = args.filter
+        ? createFilterErrorMessage(error.message)
+        : error.message;
+
       return {
         content: [
           {
             type: 'text',
             text: JSON.stringify({
-              error: error.message,
+              error: errorMessage,
             }, null, 2),
           },
         ],
