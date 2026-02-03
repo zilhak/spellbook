@@ -114,7 +114,7 @@ docker-compose logs -f
 
 ```bash
 # 최초 1회만 실행
-docker-compose exec spellbook pnpm run seed
+docker-compose exec spellbook bun run seed
 ```
 
 ### 8. 확인
@@ -136,7 +136,7 @@ ls -la /path/to/your/data
 {
   "mcpServers": {
     "spellbook": {
-      "url": "http://localhost:8000"
+      "url": "http://localhost:8000/mcp"
     }
   }
 }

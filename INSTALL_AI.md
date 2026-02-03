@@ -78,7 +78,7 @@ docker-compose logs -f spellbook
 
 ```bash
 # 최초 1회만 실행
-docker-compose exec spellbook pnpm run seed
+docker-compose exec spellbook bun run seed
 ```
 
 ### 7. 상태 확인
@@ -99,7 +99,7 @@ ls -la ${QDRANT_DATA_PATH}
 {
   "mcpServers": {
     "spellbook": {
-      "url": "http://localhost:8000"
+      "url": "http://localhost:8000/mcp"
     }
   }
 }
@@ -192,7 +192,7 @@ docker-compose up -d
 sleep 10
 
 # 7. 시스템 가이드 초기화
-docker-compose exec -T spellbook pnpm run seed
+docker-compose exec -T spellbook bun run seed
 
 # 8. 상태 확인
 curl http://localhost:8000/health
@@ -261,7 +261,7 @@ mkdir -p ./data/qdrant
 ollama pull nomic-embed-text
 docker-compose up -d
 sleep 10
-docker-compose exec -T spellbook pnpm run seed
+docker-compose exec -T spellbook bun run seed
 ```
 
 **총 7개 명령어로 완료!**

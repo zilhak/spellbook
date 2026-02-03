@@ -1,43 +1,20 @@
-# Build stage
-FROM node:20-alpine AS builder
+# Bun 기반 MCP 서버
+FROM oven/bun:1-alpine
 
 WORKDIR /app
 
-# Copy package files
-COPY package.json pnpm-lock.yaml* ./
+# 패키지 파일 복사
+COPY package.json bun.lockb* ./
 
-# Install pnpm
-RUN npm install -g pnpm
+# 의존성 설치
+RUN bun install --frozen-lockfile --production
 
-# Install dependencies
-RUN pnpm install --frozen-lockfile
+# 소스 코드 복사
+COPY src ./src
+COPY tsconfig.json ./
 
-# Copy source code
-COPY . .
-
-# Build TypeScript
-RUN pnpm run build
-
-# Production stage
-FROM node:20-alpine
-
-WORKDIR /app
-
-# Install pnpm
-RUN npm install -g pnpm
-
-# Copy package files
-COPY package.json pnpm-lock.yaml* ./
-
-# Install production dependencies only
-RUN pnpm install --frozen-lockfile --prod
-
-# Copy built files
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/src/data ./dist/data
-
-# Expose port
+# 포트 노출
 EXPOSE 8000
 
-# Start server
-CMD ["node", "dist/index.js"]
+# 서버 실행 (TypeScript 직접 실행)
+CMD ["bun", "run", "src/index.ts"]
