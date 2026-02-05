@@ -22,139 +22,55 @@ AI 에이전트 개인화 과정에서 축적되는 정보들을 VectorDB에 저
 
 ## 빠른 시작
 
-> 📖 **설치 가이드**:
+> 📖 **상세 설치 가이드**:
 > - 👤 **사람**: [INSTALL.md](./INSTALL.md) - 대화형 설치 스크립트 사용
 > - 🤖 **AI Agent**: [INSTALL_AI.md](./INSTALL_AI.md) - 환경 변수 설정 가이드
 
-### 방법 1: Bun 직접 설치 (최소 명령어) ⚡
+### 방법 1: Docker Compose (권장) ⭐
 
-**가장 간단한 방법** - TypeScript 직접 실행, 빌드 불필요
+**사전 요구사항**: [Docker](https://docs.docker.com/get-docker/), [Ollama](https://ollama.com)
 
 ```bash
-# 저장소 클론
 git clone https://github.com/username/spellbook.git
 cd spellbook
-
-# 의존성 설치
-bun install
-
-# 사전 준비 (Qdrant + Ollama)
-docker run -d -p 17951:6333 qdrant/qdrant && ollama pull nomic-embed-text
-
-# 환경 변수 (선택적, 기본값 사용 가능)
-export QDRANT_URL=http://localhost:17951
-export OLLAMA_HOST=http://localhost:11434
-
-# 실행
-bun run start
+./scripts/setup.sh   # 환경 확인 + 모델 다운로드 + 이미지 빌드
+docker compose up -d
 ```
 
-**Bun의 장점**:
-- ✅ TypeScript 직접 실행 (빌드 불필요)
-- ✅ 매우 빠른 설치 (npm 대비 10배+)
-- ✅ 빠른 시작 시간
+setup.sh가 Docker, Ollama 확인 및 임베딩 모델 다운로드, 이미지 빌드를 처리합니다.
+첫 실행 시 시스템 가이드 seed가 자동으로 수행됩니다.
 
-**필요 조건**:
-- [Bun](https://bun.sh) 설치: `curl -fsSL https://bun.sh/install | bash`
-
----
-
-### 방법 2: Docker Compose (완전 자동화)
-
-#### 1. 사전 요구사항
-
-- Docker & Docker Compose
-- Ollama (호스트에서 실행)
-
+**설정 커스터마이징** (선택):
 ```bash
-# Ollama 설치 후
-ollama pull nomic-embed-text
-```
-
-#### 2. 환경 설정 (.env)
-
-```bash
-# .env.example을 복사
 cp .env.example .env
-
-# .env 파일 수정
 nano .env
 ```
 
-**.env 필수 설정**:
-```bash
-# 데이터 저장 경로 지정 (필수!)
-QDRANT_DATA_PATH=/path/to/your/data
-
-# 예시:
-# Windows: QDRANT_DATA_PATH=E:/spellbook-data
-# Linux/Mac: QDRANT_DATA_PATH=/home/user/spellbook-data
-# 상대 경로: QDRANT_DATA_PATH=./data/qdrant (기본값)
-```
-
-**선택적 설정**:
-```bash
-PORT=17950
-QDRANT_COLLECTION=chunks
-OLLAMA_HOST=http://host.docker.internal:11434
-EMBEDDING_MODEL=nomic-embed-text
-```
-
-#### 3. 데이터 디렉토리 생성
-
-```bash
-# 지정한 경로에 디렉토리 생성
-mkdir -p /path/to/your/data
-
-# 또는 기본 경로 사용
-mkdir -p ./data/qdrant
-```
-
-#### 4. 실행
-
-```bash
-# Docker Compose로 실행
-docker-compose up -d
-
-# 로그 확인
-docker-compose logs -f spellbook
-```
-
-#### 5. 시스템 가이드 seed
-
-```bash
-# 최초 1회만
-docker-compose exec spellbook bun run seed
-```
+| 환경 변수 | 기본값 | 설명 |
+|-----------|--------|------|
+| `PORT` | `17950` | Spellbook 서버 포트 |
+| `QDRANT_PORT` | `17951` | Qdrant 외부 포트 |
+| `QDRANT_DATA_PATH` | `./data/qdrant` | 데이터 저장 경로 |
+| `OLLAMA_HOST` | `http://host.docker.internal:11434` | Ollama 주소 |
 
 ---
 
-### 방법 3: 개발 모드
+### 방법 2: Bun 직접 실행 (개발용)
 
 ```bash
-# 저장소 클론
 git clone https://github.com/username/spellbook.git
 cd spellbook
-
-# 의존성 설치
 bun install
 
-# Qdrant만 Docker로
+# Qdrant + Ollama 준비
 docker run -d -p 17951:6333 qdrant/qdrant
+ollama pull nomic-embed-text
 
 # 개발 모드 (hot reload)
 bun run dev
 ```
 
----
-
-## 설치 방법 비교
-
-| 방법 | 명령어 수 | 빌드 | 런타임 | 권장 용도 |
-|------|-----------|------|--------|-----------|
-| **Bun 직접** | 3개 | ❌ 불필요 | Bun | **프로덕션** ⭐ |
-| **Docker Compose** | 1개 | Docker 내부 | Bun | **완전 격리** |
-| **개발 모드** | 3개 | ❌ 불필요 | Bun | **기여/개발** |
+**필요 조건**: [Bun](https://bun.sh) (`curl -fsSL https://bun.sh/install | bash`)
 
 ---
 

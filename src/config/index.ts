@@ -33,6 +33,7 @@ export function loadConfig(): ServerConfig {
     qdrant: {
       url: getEnvOrDefault('QDRANT_URL', 'http://localhost:17951'),
       collectionName: getEnvOrDefault('QDRANT_COLLECTION', 'chunks'),
+      metadataCollectionName: getEnvOrDefault('QDRANT_METADATA_COLLECTION', 'metadata'),
     },
   };
 }

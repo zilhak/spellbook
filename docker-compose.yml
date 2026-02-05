@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   spellbook:
     build: .
@@ -15,13 +13,20 @@ services:
       - EMBEDDING_DIMENSIONS=${EMBEDDING_DIMENSIONS:-768}
       - EMBEDDING_CONTEXT_LENGTH=${EMBEDDING_CONTEXT_LENGTH:-8192}
     depends_on:
-      - qdrant
+      qdrant:
+        condition: service_healthy
     restart: unless-stopped
 
   qdrant:
     image: qdrant/qdrant:latest
     ports:
-      - "17951:6333"
+      - "${QDRANT_PORT:-17951}:6333"
     volumes:
       - ${QDRANT_DATA_PATH:-./data/qdrant}:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:6333/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
     restart: unless-stopped

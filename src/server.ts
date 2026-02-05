@@ -93,7 +93,9 @@ export class MCPServer {
           text: z.string(),
           metadata: z.object({
             topic_id: z.string(),
+            topic_name: z.string().optional().describe('토픽의 사람이 읽을 수 있는 이름'),
             category: z.string(),
+            sub_category: z.string().optional().describe('카테고리 하위 분류'),
             keywords: z.array(z.string()),
             questions: z.array(z.string()),
             entities: z.array(z.object({
@@ -234,7 +236,9 @@ export class MCPServer {
             id: z.string().optional(),
             text: z.string(),
             topic_id: z.string().optional(),
+            topic_name: z.string().optional(),
             category: z.string().optional(),
+            sub_category: z.string().optional(),
             keywords: z.array(z.string()).optional(),
             questions: z.array(z.string()).optional(),
             entities: z.array(z.any()).optional(),

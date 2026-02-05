@@ -11,6 +11,7 @@ import type { RestSessionManager } from '../core/rest-session.js';
 import type { SearchService } from '../core/searcher.js';
 import type { EmbeddingService } from '../core/embedder.js';
 import type { QdrantService } from '../db/qdrant.js';
+import type { MetadataService } from '../core/metadata-service.js';
 import type { Chunk, ScribeRequest, ScribeResponse } from '../types/models.js';
 
 export class ScribeTools {
@@ -18,7 +19,8 @@ export class ScribeTools {
     private sessionManager: RestSessionManager,
     private searcher: SearchService,
     private embedder: EmbeddingService,
-    private qdrant: QdrantService
+    private qdrant: QdrantService,
+    private metadataService: MetadataService
   ) {}
 
   /**
@@ -79,7 +81,10 @@ export class ScribeTools {
         ...chunk.metadata,
       });
 
-      // 5. 세션 카운트 증가
+      // 5. 메타데이터 업데이트
+      await this.metadataService.onChunkScribed(chunk.metadata);
+
+      // 6. 세션 카운트 증가
       this.sessionManager.incrementScribeCount(args.session_id);
 
       const response: ScribeResponse = {
@@ -108,7 +113,16 @@ export class ScribeTools {
    */
   async erase(chunkId: string): Promise<any> {
     try {
+      // 삭제 전 페이로드 조회 (메타데이터 업데이트용)
+      const existing = await this.qdrant.getById(chunkId);
+
       await this.qdrant.deleteChunk(chunkId);
+
+      // 메타데이터 업데이트
+      if (existing?.payload) {
+        await this.metadataService.onChunkErased(existing.payload);
+      }
+
       return {
         content: [
           {

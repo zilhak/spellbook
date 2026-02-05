@@ -17,7 +17,9 @@ export interface Entity {
 
 export interface ChunkMetadata {
   topic_id: string;
+  topic_name?: string;
   category: string;
+  sub_category?: string;
   keywords: string[];
   questions: string[];
   entities: Entity[];
@@ -89,8 +91,34 @@ export interface Topic {
 export interface CategoryInfo {
   id: string;
   name: string;
+  sub_categories: string[];
   topic_count: number;
+  chunk_count: number;
   description: string;
+}
+
+// ============================================================================
+// Metadata 컬렉션 문서 타입
+// ============================================================================
+
+export interface CategoryMetadata {
+  type: 'category';
+  name: string;
+  sub_categories: string[];
+  topic_count: number;
+  chunk_count: number;
+  last_updated: string;
+}
+
+export interface TopicMetadata {
+  type: 'topic';
+  topic_id: string;
+  topic_name: string;
+  category: string;
+  sub_category?: string;
+  chunk_count: number;
+  keywords: string[];
+  last_updated: string;
 }
 
 export interface MetaIndex {
@@ -162,6 +190,7 @@ export interface EmbeddingConfig {
 export interface QdrantConfig {
   url: string;
   collectionName: string;
+  metadataCollectionName: string;
 }
 
 export interface ServerConfig {

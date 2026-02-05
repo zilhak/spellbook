@@ -13,8 +13,11 @@ RUN bun install --frozen-lockfile --production
 COPY src ./src
 COPY tsconfig.json ./
 
-# 포트 노출
-EXPOSE 8000
+# 엔트리포인트 스크립트 복사
+COPY docker-entrypoint.sh ./
 
-# 서버 실행 (TypeScript 직접 실행)
-CMD ["bun", "run", "src/index.ts"]
+# 포트 노출
+EXPOSE 17950
+
+# 엔트리포인트로 실행
+ENTRYPOINT ["./docker-entrypoint.sh"]

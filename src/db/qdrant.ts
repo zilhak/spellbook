@@ -151,4 +151,99 @@ export class QdrantService {
 
     return result.points;
   }
+
+  // ============================================================================
+  // 범용 멀티 컬렉션 메서드 (metadata 컬렉션 등에 사용)
+  // ============================================================================
+
+  /**
+   * 페이로드 전용 컬렉션 초기화
+   * Qdrant JS 클라이언트는 벡터 설정이 필수이므로 size:1 더미 벡터 사용
+   */
+  async initializePayloadCollection(name: string): Promise<void> {
+    try {
+      const collections = await this.client.getCollections();
+      const exists = collections.collections.some(c => c.name === name);
+
+      if (exists) {
+        console.log(`✅ Qdrant 컬렉션 이미 존재: ${name}`);
+        return;
+      }
+
+      await this.client.createCollection(name, {
+        vectors: {
+          size: 1,
+          distance: 'Cosine',
+        },
+      });
+
+      console.log(`✅ Qdrant 페이로드 컬렉션 생성 완료: ${name}`);
+    } catch (error) {
+      throw new Error(`Qdrant 페이로드 컬렉션 초기화 실패: ${error}`);
+    }
+  }
+
+  /**
+   * 범용 포인트 upsert (더미 벡터 [0] 사용)
+   */
+  async upsertPoint(
+    collection: string,
+    id: string,
+    payload: Record<string, any>
+  ): Promise<void> {
+    await this.client.upsert(collection, {
+      wait: true,
+      points: [
+        {
+          id,
+          vector: [0],
+          payload,
+        },
+      ],
+    });
+  }
+
+  /**
+   * 범용 포인트 조회
+   */
+  async getPointById(collection: string, id: string): Promise<any | null> {
+    try {
+      const result = await this.client.retrieve(collection, {
+        ids: [id],
+        with_payload: true,
+        with_vector: false,
+      });
+      return result.length > 0 ? result[0] : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * 범용 포인트 삭제
+   */
+  async deletePoint(collection: string, id: string): Promise<void> {
+    await this.client.delete(collection, {
+      wait: true,
+      points: [id],
+    });
+  }
+
+  /**
+   * 범용 컬렉션 스크롤
+   */
+  async scrollCollection(
+    collection: string,
+    limit: number = 100,
+    filter?: Record<string, any>
+  ): Promise<any[]> {
+    const result = await this.client.scroll(collection, {
+      limit,
+      filter,
+      with_payload: true,
+      with_vector: false,
+    });
+
+    return result.points;
+  }
 }

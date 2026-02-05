@@ -11,6 +11,7 @@ import { loadConfig, validateConfig } from './config/index.js';
 import { EmbeddingService } from './core/embedder.js';
 import { SearchService } from './core/searcher.js';
 import { RestSessionManager } from './core/rest-session.js';
+import { MetadataService } from './core/metadata-service.js';
 import { QdrantService } from './db/qdrant.js';
 import { RestTools } from './tools/rest.js';
 import { ScribeTools } from './tools/scribe.js';
@@ -31,6 +32,10 @@ async function main() {
     console.log('📦 Qdrant 연결 중...');
     const qdrant = new QdrantService(config.qdrant);
     await qdrant.initializeCollection(config.embedding.dimensions);
+
+    // 2-1. 메타데이터 컬렉션 초기화
+    const metadataService = new MetadataService(qdrant, config.qdrant.metadataCollectionName);
+    await metadataService.initialize();
     console.log('');
 
     // 3. 임베딩 서비스 초기화
@@ -48,9 +53,9 @@ async function main() {
 
     // 6. MCP 도구들 초기화
     const restTools = new RestTools(sessionManager);
-    const scribeTools = new ScribeTools(sessionManager, searcher, embedder, qdrant);
+    const scribeTools = new ScribeTools(sessionManager, searcher, embedder, qdrant, metadataService);
     const memorizeTools = new MemorizeTools(searcher);
-    const adminTools = new AdminTools(qdrant, searcher, embedder);
+    const adminTools = new AdminTools(qdrant, searcher, embedder, metadataService);
 
     // 7. MCP 서버 생성 및 시작
     const server = new MCPServer({
