@@ -138,11 +138,14 @@ Agent(Claude)가 scribe 호출 시 전달하는 데이터 구조:
 Chunk:
   - text: 실제 내용
   - metadata:
-      topic: 주제 분류
+      topic_id: 주제 분류 ID
+      topic_name: 토픽의 사람이 읽을 수 있는 이름 (선택)
+      category: 카테고리 (project, knowledge 등)
+      sub_category: 카테고리 하위 분류 (선택)
       keywords: 키워드 목록
-      question_this_answers: 이 청크가 답할 수 있는 질문들
+      questions: 이 청크가 답할 수 있는 질문들
       entities: 관련 개체 (사람, 프로젝트, 기술 등)
-      importance: 중요도
+      importance: 중요도 (high, medium, low)
 ```
 
 **Agent가 저장 시 의미 단위로 잘 정리해서 보내야 한다.**
@@ -261,7 +264,7 @@ scribe(chunk, "expired-id") → Error: "REST 세션이 만료되었습니다. re
 
 ## 아키텍처
 
-Docker 컨테이너 하나에 MCP 서버와 VectorDB를 통합하여 배포를 단순화한다.
+Docker Compose로 MCP 서버와 Qdrant를 별도 컨테이너로 실행한다.
 MCP는 HTTP/SSE 방식으로 독립 서버로 실행된다.
 
 ```
@@ -279,11 +282,11 @@ MCP는 HTTP/SSE 방식으로 독립 서버로 실행된다.
                                 │ HTTP + SSE
                                 ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                    Docker Container (spellbook)                     │
+│                    Docker Compose (spellbook)                       │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                     │
 │  ┌───────────────────────────────────────────────────────────────┐ │
-│  │                    MCP Server (HTTP/SSE)                      │ │
+│  │              spellbook 컨테이너 (MCP Server)                  │ │
 │  │                                                               │ │
 │  │  - 임베딩 생성 (Ollama 호출)                                  │ │
 │  │  - 검색/인덱싱                                                │ │
@@ -294,13 +297,13 @@ MCP는 HTTP/SSE 방식으로 독립 서버로 실행된다.
 │                                │                                    │
 │                                ▼                                    │
 │  ┌───────────────────────────────────────────────────────────────┐ │
-│  │                    Qdrant (embedded)                          │ │
+│  │              qdrant 컨테이너 (VectorDB)                       │ │
 │  │                                                               │ │
 │  │  - 벡터 저장/검색                                             │ │
 │  │  - 메타데이터 필터링                                          │ │
 │  └───────────────────────────────────────────────────────────────┘ │
 │                                                                     │
-│  Volume: /data (영속 데이터)                                        │
+│  Volume: ./data/qdrant (영속 데이터)                                │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -309,9 +312,9 @@ MCP는 HTTP/SSE 방식으로 독립 서버로 실행된다.
 
 | 결정 | 이유 |
 |------|------|
-| **Docker 통합** | VectorDB 서버가 필요하므로, MCP 서버까지 함께 컨테이너화하여 배포 단순화 |
+| **Docker Compose** | MCP 서버와 Qdrant를 별도 컨테이너로 실행, healthcheck로 의존성 관리 |
 | **HTTP/SSE 방식** | stdio 대신 독립 서버로 실행하여 Docker 내부에서 완결 |
-| **Qdrant embedded** | 별도 프로세스 없이 라이브러리로 임베딩, 풍부한 메타데이터 필터링 지원 |
+| **Qdrant 별도 컨테이너** | JS에서는 embedded 모드 미지원, REST API 클라이언트로 연동 |
 
 ---
 
@@ -343,19 +346,18 @@ MCP는 HTTP/SSE 방식으로 독립 서버로 실행된다.
 
 | 도구 | 설명 | 파라미터 | 제약 조건 |
 |------|------|----------|----------|
-| `scribe` | 새 정보 저장 | `chunk`, `source?`, `category?` | **REST 모드 필수** |
-| `scribe_chunk` | 이미 청킹된 정보 직접 저장 | `chunk` (구조화된 데이터) | **REST 모드 필수** |
-| `erase` | 특정 청크/토픽 삭제 | `chunk_id` or `topic_id` | - |
-| `revise` | 기존 청크 수정 | `chunk_id`, `content` | - |
+| `scribe` | 새 정보 저장 | `chunk`, `session_id`, `source?`, `category?` | **REST 모드 필수** |
+| `erase` | 특정 청크 삭제 | `chunk_id` | - |
+| `revise` | 기존 청크 수정 | `chunk_id`, `new_text` | - |
 
 ### 관리 도구
 
 | 도구 | 설명 | 파라미터 |
 |------|------|----------|
 | `stats` | 저장소 통계 (청크 수, 카테고리별 분포) | - |
-| `rebuild_index` | 목차 재구축 | - |
-| `export` | 백업 내보내기 | `format`: json/markdown |
-| `import` | 백업 가져오기 | `file_path` |
+| `filter_guide` | 필터 사용법 가이드 조회 | - |
+| `export` | JSON 백업 내보내기 | - |
+| `import` | JSON 백업 가져오기 | `data`: `{ version?, chunks[] }` |
 
 ---
 
@@ -400,10 +402,11 @@ interface MetadataRules {
 interface Chunk {
   id: string;                    // UUID
   text: string;                  // 실제 내용
-  embedding: number[];           // 벡터 임베딩
   metadata: {
-    topic_id: string;            // 소속 토픽
-    category: string;            // 카테고리 (project, preference, knowledge 등)
+    topic_id: string;            // 소속 토픽 ID
+    topic_name?: string;         // 토픽의 사람이 읽을 수 있는 이름
+    category: string;            // 카테고리 (project, knowledge 등)
+    sub_category?: string;       // 카테고리 하위 분류
     keywords: string[];          // 키워드
     questions: string[];         // 이 청크가 답할 수 있는 질문들
     entities: Entity[];          // 관련 개체
@@ -459,9 +462,9 @@ interface MetaIndex {
 
 | 구성요소 | 선택 | 이유 |
 |----------|------|------|
-| **VectorDB** | Qdrant (embedded) | 메타데이터 필터링 우수, 안정성, 확장 가능 |
+| **VectorDB** | Qdrant (별도 컨테이너) | 메타데이터 필터링 우수, 안정성, 확장 가능 |
 | **MCP 전송** | HTTP/SSE | Docker 내부에서 독립 서버로 실행 |
-| **배포** | Docker | MCP 서버 + Qdrant 통합 컨테이너 |
+| **배포** | Docker Compose | MCP 서버 + Qdrant 별도 컨테이너, healthcheck 의존성 관리 |
 
 ### 런타임 선택
 
@@ -552,22 +555,31 @@ spellbook/
 ├── src/
 │   ├── index.ts                    # MCP 서버 진입점
 │   ├── server.ts                   # HTTP/SSE 서버 구성
+│   ├── config/
+│   │   └── index.ts                # 설정 로더 및 검증
 │   ├── tools/                      # MCP 도구 구현
 │   │   ├── memorize.ts             # 검색/읽기 도구
 │   │   ├── scribe.ts               # 저장/쓰기 도구
-│   │   ├── index.ts                # 인덱스 도구
+│   │   ├── rest.ts                 # REST 세션 도구
 │   │   └── admin.ts                # 관리 도구
 │   ├── core/
 │   │   ├── embedder.ts             # 임베딩 생성 (Ollama 호출)
 │   │   ├── searcher.ts             # 검색 로직
-│   │   └── indexer.ts              # 목차 관리
+│   │   ├── rest-session.ts         # REST 세션 관리
+│   │   ├── metadata-service.ts     # 메타데이터 컬렉션 관리
+│   │   └── filter-utils.ts         # 필터 변환 헬퍼
 │   ├── db/
-│   │   ├── qdrant.ts               # Qdrant 연동
-│   │   └── index-store.ts          # 메타 목차 저장소
+│   │   └── qdrant.ts               # Qdrant 연동
+│   ├── data/
+│   │   └── system-guides.ts        # 시스템 시드 데이터
+│   ├── scripts/
+│   │   └── seed-system-guides.ts   # 시드 스크립트
 │   └── types/
 │       └── models.ts               # 타입/인터페이스 정의
 ├── Dockerfile
 ├── docker-compose.yml
+├── docker-entrypoint.sh            # 자동 시드 및 헬스체크
+├── .env.example                    # 환경 변수 템플릿
 ├── package.json
 ├── tsconfig.json
 └── CLAUDE.md                       # 이 파일
@@ -583,7 +595,7 @@ spellbook/
 {
   "mcpServers": {
     "spellbook": {
-      "url": "http://localhost:17950"
+      "url": "http://localhost:17950/mcp"
     }
   }
 }
@@ -592,15 +604,12 @@ spellbook/
 ### Docker 실행
 
 ```bash
-# 컨테이너 실행
-docker run -d \
-  --name spellbook \
-  -p 17950:17950 \
-  -v ~/.claude/spellbook-data:/data \
-  -e OLLAMA_HOST=http://host.docker.internal:11434 \
-  spellbook:latest
+# docker-compose로 실행 (권장)
+docker-compose up -d
 
-# 또는 docker-compose
+# 환경 변수 커스텀 시 .env 파일 생성 후 실행
+cp .env.example .env
+# .env 파일 편집 후
 docker-compose up -d
 ```
 
@@ -651,7 +660,9 @@ const session = await rest();
 const chunk1 = {
   text: "Docker Compose는...",
   metadata: {
-    topic: "인프라",
+    topic_id: "infrastructure",
+    topic_name: "인프라",
+    category: "knowledge",
     keywords: ["Docker", "Compose", "컨테이너"],
     questions: ["Docker Compose 설정 방법은?"],
     entities: [{ name: "Docker", type: "technology" }],
@@ -687,16 +698,18 @@ await rest_end(session.session_id);
 ```json
 {
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@modelcontextprotocol/sdk": "^1.0.4",
     "@qdrant/js-client-rest": "^1.11.0",
-    "express": "^4.18.2",
-    "uuid": "^9.0.0",
-    "zod": "^3.24.0"
+    "axios": "^1.7.0",
+    "express": "^4.21.2",
+    "uuid": "^11.0.3",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
-    "typescript": "^5.3.0",
-    "@types/node": "^20.0.0",
-    "@types/express": "^4.17.0"
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.5",
+    "@types/uuid": "^10.0.0",
+    "typescript": "^5.7.2"
   }
 }
 ```
@@ -712,13 +725,12 @@ await rest_end(session.session_id);
 import { QdrantClient } from '@qdrant/js-client-rest';
 
 const client = new QdrantClient({
-  url: 'http://localhost:17951', // Docker 내부 또는 embedded
+  url: 'http://localhost:17951', // 로컬 개발 시 (docker-compose 포트 매핑)
+  // url: 'http://qdrant:6333',  // Docker Compose 내부 통신 시
 });
 ```
 
-**참고**: Qdrant는 JavaScript 클라이언트 라이브러리를 제공하지만, embedded 모드는 Rust/Python만 지원합니다. Bun/Node.js에서는 별도 Qdrant 서버 프로세스가 필요합니다.
-
-**해결책**: Docker Compose로 Qdrant 컨테이너 별도 실행 (권장)
+**참고**: Qdrant embedded 모드는 Rust/Python만 지원합니다. Bun/Node.js에서는 Docker Compose로 Qdrant 컨테이너를 별도 실행하여 REST API 클라이언트로 연동합니다.
 
 ### 임베딩 서비스 구현
 
@@ -1026,40 +1038,50 @@ export class ScribeTool {
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   spellbook:
     build: .
     ports:
-      - "17950:17950"
+      - "${PORT:-17950}:${PORT:-17950}"
     environment:
-      - OLLAMA_HOST=http://host.docker.internal:11434
+      - PORT=${PORT:-17950}
+      - HOST=${HOST:-0.0.0.0}
       - QDRANT_URL=http://qdrant:6333
-      - EMBEDDING_MODEL=nomic-embed-text
-      - EMBEDDING_DIMENSIONS=768
-    volumes:
-      - ./data:/data
+      - QDRANT_COLLECTION=${QDRANT_COLLECTION:-chunks}
+      - OLLAMA_HOST=${OLLAMA_HOST:-http://host.docker.internal:11434}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-embed-text}
+      - EMBEDDING_DIMENSIONS=${EMBEDDING_DIMENSIONS:-768}
+      - EMBEDDING_CONTEXT_LENGTH=${EMBEDDING_CONTEXT_LENGTH:-8192}
     depends_on:
-      - qdrant
+      qdrant:
+        condition: service_healthy
+    restart: unless-stopped
 
   qdrant:
     image: qdrant/qdrant:latest
     ports:
-      - "17951:6333"
+      - "${QDRANT_PORT:-17951}:6333"
     volumes:
-      - qdrant_storage:/qdrant/storage
-
-volumes:
-  qdrant_storage:
+      - ${QDRANT_DATA_PATH:-./data/qdrant}:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:6333/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
 ```
 
 ### 환경 변수 설정
 
 ```bash
-# .env
-OLLAMA_HOST=http://host.docker.internal:11434
-QDRANT_URL=http://qdrant:6333
+# .env (.env.example 참조)
+PORT=17950
+HOST=0.0.0.0
+QDRANT_URL=http://localhost:17951
+QDRANT_COLLECTION=chunks
+QDRANT_DATA_PATH=./data/qdrant
+OLLAMA_HOST=http://localhost:11434
 EMBEDDING_MODEL=nomic-embed-text
 EMBEDDING_DIMENSIONS=768
 EMBEDDING_CONTEXT_LENGTH=8192
