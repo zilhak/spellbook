@@ -110,14 +110,9 @@ docker-compose up -d
 docker-compose logs -f
 ```
 
-### 7. 시스템 가이드 초기화
+### 7. 확인
 
-```bash
-# 최초 1회만 실행
-docker-compose exec spellbook bun run seed
-```
-
-### 8. 확인
+> **참고**: 시스템 가이드 seed는 첫 실행 시 자동으로 수행됩니다 (docker-entrypoint.sh).
 
 ```bash
 # 서버 상태 확인

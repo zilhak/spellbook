@@ -74,14 +74,9 @@ docker-compose up -d
 docker-compose logs -f spellbook
 ```
 
-### 6. 시스템 가이드 초기화
+### 6. 상태 확인
 
-```bash
-# 최초 1회만 실행
-docker-compose exec spellbook bun run seed
-```
-
-### 7. 상태 확인
+> **참고**: 시스템 가이드 seed는 첫 실행 시 자동으로 수행됩니다 (docker-entrypoint.sh).
 
 ```bash
 # 서버 상태 확인
@@ -91,7 +86,7 @@ curl http://localhost:17950/health
 ls -la ${QDRANT_DATA_PATH}
 ```
 
-### 8. Claude Code MCP 설정
+### 7. Claude Code MCP 설정
 
 **방법 1: CLI 명령어 (권장)**
 
@@ -196,13 +191,10 @@ ollama pull nomic-embed-text
 # 5. Docker Compose 실행
 docker-compose up -d
 
-# 6. 서버 시작 대기
+# 6. 서버 시작 대기 (시스템 가이드 seed 자동 수행)
 sleep 10
 
-# 7. 시스템 가이드 초기화
-docker-compose exec -T spellbook bun run seed
-
-# 8. 상태 확인
+# 7. 상태 확인
 curl http://localhost:17950/health
 
 echo "✅ 설치 완료!"
@@ -253,7 +245,7 @@ AI Agent가 설치 후 확인해야 할 항목:
 - [ ] `nomic-embed-text` 모델이 다운로드됨 (`ollama list`)
 - [ ] Docker 컨테이너가 실행 중 (`docker-compose ps`)
 - [ ] MCP 서버가 응답함 (`curl http://localhost:${PORT}/health`)
-- [ ] 시스템 가이드가 초기화됨 (VectorDB에 3개 청크 존재)
+- [ ] 시스템 가이드가 초기화됨 (VectorDB에 4개 청크 존재, 자동 seed)
 
 ---
 
@@ -268,8 +260,6 @@ cp .env.example .env
 mkdir -p ./data/qdrant
 ollama pull nomic-embed-text
 docker-compose up -d
-sleep 10
-docker-compose exec -T spellbook bun run seed
 ```
 
-**총 7개 명령어로 완료!**
+**총 6개 명령어로 완료!** (시스템 가이드 seed는 첫 실행 시 자동 수행)

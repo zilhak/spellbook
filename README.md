@@ -244,6 +244,7 @@ bun run seed
 | `revise` | 청크 수정 | - |
 | `stats` | 통계 | - |
 | `get_index` | 메타 목차 | - |
+| `filter_guide` | 필터 사용법 가이드 | - |
 | `export` | JSON 백업 | - |
 | `import` | JSON 복원 | - |
 
