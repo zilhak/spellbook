@@ -1,4 +1,4 @@
-# Spellbook 🔮
+# Spellbook v1.0 🔮
 
 VectorDB 기반 AI Agent 메모리 MCP 서버
 
@@ -94,6 +94,25 @@ claude mcp add --transport http spellbook http://localhost:17950/mcp
   }
 }
 ```
+
+### AI Agent 시스템 프롬프트 설정 (권장)
+
+Spellbook을 효과적으로 활용하려면, AI Agent의 시스템 프롬프트(CLAUDE.md 등)에 다음과 같은 지침을 추가하는 것을 권장합니다:
+
+```markdown
+## Spellbook 활용 규칙
+
+- 모르는 개념, 프로젝트 컨벤션, 과거 결정 사항이 나오면 먼저 Spellbook에서 검색하라
+- 세션 시작 시 get_index()로 어떤 정보가 저장되어 있는지 확인하라
+- 검색 방법:
+  - 맥락/개념이 궁금할 때: memorize(query)
+  - 정확한 용어를 알 때: find(keywords)
+- 중요한 결정, 새로운 패턴, 사용자 선호도가 확인되면 REST 모드로 저장하라
+```
+
+이를 통해 Agent가 이전 세션에서 축적한 지식을 자연스럽게 활용하게 됩니다.
+
+---
 
 ## 사용법
 

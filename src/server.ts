@@ -57,7 +57,7 @@ export class MCPServer {
   private createMcpServer(): McpServer {
     const server = new McpServer({
       name: 'spellbook',
-      version: '0.1.0',
+      version: '1.0.0',
     });
 
     // === REST 도구 ===

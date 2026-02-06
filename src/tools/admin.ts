@@ -119,7 +119,7 @@ export class AdminTools {
       const chunks = await this.qdrant.scroll(10000);
 
       const backup = {
-        version: '0.1.0',
+        version: '1.0.0',
         exported_at: new Date().toISOString(),
         total_chunks: chunks.length,
         chunks: chunks.map(c => c.payload),
