@@ -31,7 +31,7 @@ AI 에이전트 개인화 과정에서 축적되는 정보들을 VectorDB에 저
 **사전 요구사항**: [Docker](https://docs.docker.com/get-docker/), [Ollama](https://ollama.com)
 
 ```bash
-git clone https://github.com/username/spellbook.git
+git clone https://github.com/zilhak/spellbook.git
 cd spellbook
 ./scripts/setup.sh   # 환경 확인 + 모델 다운로드 + 이미지 빌드
 docker compose up -d
@@ -58,7 +58,7 @@ nano .env
 ### 방법 2: Bun 직접 실행 (개발용)
 
 ```bash
-git clone https://github.com/username/spellbook.git
+git clone https://github.com/zilhak/spellbook.git
 cd spellbook
 bun install
 

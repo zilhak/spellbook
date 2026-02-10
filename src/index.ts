@@ -72,7 +72,7 @@ async function main() {
     const isEmpty = await qdrant.isEmpty();
     if (isEmpty) {
       console.log('⚠️  VectorDB가 비어있습니다.');
-      console.log('   시스템 가이드를 seed하려면: npm run seed');
+      console.log('   시스템 가이드를 seed하려면: bun run seed');
       console.log('');
     } else {
       const stats = await qdrant.getStats();

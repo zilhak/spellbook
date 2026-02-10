@@ -4,7 +4,7 @@ FROM oven/bun:1-alpine
 WORKDIR /app
 
 # 패키지 파일 복사
-COPY package.json bun.lockb* ./
+COPY package.json bun.lock* ./
 
 # 의존성 설치
 RUN bun install --frozen-lockfile --production
