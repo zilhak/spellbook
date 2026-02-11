@@ -21,7 +21,7 @@ MCP를 호출하는 주체가 AI Agent(Claude)이므로, **청킹은 Agent가 �
 │                                                                 │
 │  - 저장할 내용을 의미 단위로 분할                               │
 │  - 적절한 메타데이터(topic, keywords 등) 부여                   │
-│  - scribe() 호출                                                │
+│  - Canon: scribe() 호출 / Lore: chronicle() 호출               │
 └─────────────────────────────────────────────────────────────────┘
                                 │
                                 ▼
@@ -29,7 +29,7 @@ MCP를 호출하는 주체가 AI Agent(Claude)이므로, **청킹은 Agent가 �
 │ Spellbook (MCP)                                                 │
 │                                                                 │
 │  - 받은 청크를 임베딩                                           │
-│  - VectorDB에 저장                                              │
+│  - VectorDB에 저장 (Canon 또는 지정된 Lore)                     │
 │  - 검색 시 유사도 기반 반환                                     │
 │                                                                 │
 │  ※ 청킹 로직 없음, LLM 호출 없음                                │
@@ -47,12 +47,18 @@ MCP를 호출하는 주체가 AI Agent(Claude)이므로, **청킹은 Agent가 �
 ┌─────────────────────────────────────────────────────────────────┐
 │ Spellbook (이 MCP)                                              │
 │                                                                 │
-│  - 문서 저장 (scribe)                                           │
-│  - 문서 검색 (memorize)                                         │
-│  - 임베딩, 인덱싱                                               │
+│  Canon (메인):                                                  │
+│  - 문서 저장 (scribe) / 검색 (memorize, find)                   │
+│                                                                 │
+│  Lore (서브):                                                   │
+│  - 문서 저장 (chronicle) / 검색 (recall, recall_find)           │
+│  - Lore 관리 (list_lores, delete_lore, lore_stats, update_lore) │
+│                                                                 │
+│  공통: 임베딩, 인덱싱, REST 세션 관리                           │
 │                                                                 │
 │  ※ 청킹은 Agent가 담당                                         │
 │  ※ 무엇을 저장할지, 언제 검색할지는 관여하지 않음               │
+│  ※ Canon과 Lore는 완전히 격리된 API                             │
 └─────────────────────────────────────────────────────────────────┘
                                 │
                                 │ 사용 지침은 별도
@@ -60,8 +66,9 @@ MCP를 호출하는 주체가 AI Agent(Claude)이므로, **청킹은 Agent가 �
 ┌─────────────────────────────────────────────────────────────────┐
 │ 별도 지침 (CLAUDE.md, 시스템 프롬프트 등)                       │
 │                                                                 │
-│  - 언제 scribe를 호출할지                                       │
-│  - 언제 memorize를 호출할지                                     │
+│  - 언제 scribe/chronicle를 호출할지                             │
+│  - 언제 memorize/recall를 호출할지                              │
+│  - Canon과 Lore를 어떻게 사용 분리할지                          │
 │  - 어떤 정보를 기억할 가치가 있는지                             │
 │  - 어떤 상황에서 기억을 참조할지                                │
 └─────────────────────────────────────────────────────────────────┘
@@ -71,41 +78,41 @@ MCP를 호출하는 주체가 AI Agent(Claude)이므로, **청킹은 Agent가 �
 
 ### 시스템 데이터
 
-청크 분할 가이드, 메타데이터 작성 규칙 등도 VectorDB에 저장한다.
-Agent는 scribe 전에 가이드를 memorize해서 참고한다.
+청크 분할 가이드, 메타데이터 작성 규칙 등도 Canon(VectorDB)에 저장한다.
+Agent는 scribe/chronicle 전에 가이드를 memorize해서 참고한다.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │ Spellbook (VectorDB)                                            │
 │                                                                 │
-│  ┌─────────────────────────────────────────────────────────┐   │
+│  ┌─── Canon (메인 컬렉션: chunks) ─────────────────────────┐   │
 │  │ 시스템 데이터 (category: "system")                       │   │
-│  │                                                         │   │
 │  │  - 청크 분할 가이드                                      │   │
 │  │  - 메타데이터 작성 규칙                                  │   │
-│  │  - 사용 예시                                            │   │
+│  │ 사용자 데이터 (category: "project", "preference", ...)   │   │
+│  │  - 프로젝트 정보, 결정 사항 등                           │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                                                                 │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │ 사용자 데이터 (category: "project", "preference", ...)   │   │
-│  │                                                         │   │
-│  │  - 프로젝트 정보                                        │   │
-│  │  - 결정 사항                                            │   │
-│  │  - ...                                                  │   │
+│  ┌─── Lore (서브 컬렉션: lore_{name}) ────────────────────┐   │
+│  │ Lore "my-project"  → lore_my-project                    │   │
+│  │ Lore "notes"       → lore_notes                         │   │
+│  │ Lore "research"    → lore_research                      │   │
+│  │ ... (용도별로 자유롭게 생성)                             │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-**Agent의 scribe 흐름:**
+**Agent의 scribe/chronicle 흐름:**
 ```
-Agent가 scribe 하려 함
+Agent가 저장하려 함
     │
     ▼ memorize("청크 분할 가이드", filter: {category: "system"})
     │
     ▼ 가이드 참고해서 청킹
     │
-    ▼ scribe(chunk)
+    ├─ Canon에 저장: scribe(chunk, session_id)
+    └─ Lore에 저장: chronicle(lore, chunk, session_id)
 ```
 
 **장점:**
@@ -113,18 +120,54 @@ Agent가 scribe 하려 함
 - 가이드 자체도 의미 검색 가능
 - 모든 메타 정보가 같은 시스템에서 관리
 - 초기 설정 시 기본 가이드 seed 가능
+- Lore로 용도별 데이터 격리 가능
 
 ---
 
 ## 용어 정의
 
+### 저장소 계층
+
 | 용어 | 설명 |
 |------|------|
-| **Scribe** | 정보를 저장하는 행위. MCP를 통해 기억을 기록한다. |
-| **Memorize** | 정보를 꺼내오는 행위. MCP를 통해 기억을 호출한다. |
-| **Chunk** | 의미 단위로 분할된 정보 조각 |
-| **Topic** | 관련 Chunk들의 묶음 (세부 목차) |
 | **Spellbook** | 모든 기억이 저장된 저장소 (이 프로젝트) |
+| **Canon** | 메인 기억 저장소. Agent의 핵심 지식이 축적되는 곳. Qdrant의 기본 `chunks` 컬렉션에 해당 |
+| **Lore** | 이름 붙은 서브 저장소. Canon과 완전히 분리된 독립 컬렉션. 용도별로 여러 Lore를 만들 수 있다 |
+
+### Canon 도구 (메인 저장소)
+
+| 용어 | 설명 |
+|------|------|
+| **Scribe** | Canon에 정보를 저장하는 행위. REST 모드에서만 가능 |
+| **Memorize** | Canon에서 의미 기반으로 정보를 검색하는 행위 |
+| **Find** | Canon에서 키워드 기반으로 정보를 검색하는 행위 |
+
+### Lore 도구 (서브 저장소)
+
+| 용어 | 설명 |
+|------|------|
+| **Chronicle** | Lore에 정보를 저장하는 행위. REST 모드에서만 가능. 반드시 Lore 이름을 지정 |
+| **Recall** | Lore에서 의미 기반으로 정보를 검색하는 행위. 반드시 Lore 이름을 지정 |
+| **Recall Find** | Lore에서 키워드 기반으로 정보를 검색하는 행위. 반드시 Lore 이름을 지정 |
+
+### 공통
+
+| 용어 | 설명 |
+|------|------|
+| **Chunk** | 의미 단위로 분할된 정보 조각. Canon과 Lore 모두에서 사용되는 기본 단위 |
+| **Topic** | 관련 Chunk들의 묶음 (세부 목차) |
+| **REST 모드** | 저장 작업 전 진입하는 상태. 청킹 가이드를 로드하며, scribe와 chronicle 모두 이 모드가 필요 |
+
+### API 격리 원칙
+
+```
+Canon 전용 API: memorize, find, scribe, erase, revise, get_topic
+Lore 전용 API: recall, recall_find, chronicle, erase_lore, revise_lore
+공용 API:      rest, rest_end, get_index, stats, filter_guide, export, import
+Lore 관리 API: list_lores, delete_lore, lore_stats, update_lore
+
+※ Canon API로 Lore 데이터에 접근 불가. Lore API로 Canon 데이터에 접근 불가.
+```
 
 ---
 
@@ -168,16 +211,30 @@ Level 2: 실제 청크 (VectorDB)
 
 ### 3. 이중 검색 방식
 
+Canon과 Lore 모두 의미 기반 + 키워드 기반의 이중 검색을 지원한다.
+
+**Canon 검색 (메인 저장소)**
+
 | 도구 | 방식 | 용도 | 예시 |
 |------|------|------|------|
 | `memorize` | 의미 기반 (벡터 유사도) | 비슷한 맥락/개념 찾기 | "Docker 컨테이너 설정 방법" |
 | `find` | 키워드 기반 (Full-text) | 정확한 용어 매칭 | `["Qdrant", "embedded"]` |
 
+**Lore 검색 (서브 저장소)**
+
+| 도구 | 방식 | 용도 | 예시 |
+|------|------|------|------|
+| `recall` | 의미 기반 (벡터 유사도) | Lore 내 맥락/개념 찾기 | `recall(lore: "my-project", query: "인증 방식")` |
+| `recall_find` | 키워드 기반 (Full-text) | Lore 내 정확한 용어 매칭 | `recall_find(lore: "my-project", keywords: ["JWT"])` |
+
 **언제 무엇을 쓸까?**
-- `memorize`: 질문 형태, 맥락 파악, 관련 정보 탐색
-- `find`: 특정 기술명, 프로젝트명, 정확한 용어 검색
+- `memorize` / `recall`: 질문 형태, 맥락 파악, 관련 정보 탐색
+- `find` / `recall_find`: 특정 기술명, 프로젝트명, 정확한 용어 검색
+- Canon vs Lore: 범용 지식은 Canon, 특정 용도로 분리한 데이터는 Lore
 
 ### 4. REST 워크플로우 (핵심 설계)
+
+REST 세션은 Canon(`scribe`)과 Lore(`chronicle`) 모두에서 공유된다. 청킹 가이드는 범용이므로 한 번의 REST 세션에서 Canon과 Lore에 동시에 저장할 수 있다.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -193,18 +250,19 @@ Level 2: 실제 청크 (VectorDB)
 │  - session_id: "rest-abc123"                                    │
 │  - chunking_guide: {...}                                        │
 │  - metadata_rules: {...}                                        │
-│  - status: "REST 모드 활성화. scribe 가능."                     │
+│  - status: "REST 모드 활성화. scribe/chronicle 가능."           │
 └─────────────────────────────────────────────────────────────────┘
                         │
                         ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ REST 모드 (scribe 가능 상태)                                    │
+│ REST 모드 (scribe/chronicle 가능 상태)                          │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  Agent가 가이드 참고하여 청킹:                                  │
 │  1. 의미 단위로 분할                                            │
 │  2. 메타데이터 작성 (topic, keywords, questions, entities)      │
-│  3. scribe(chunk) 호출 → 저장 성공                              │
+│  3-a. Canon 저장: scribe(chunk, session_id) 호출                │
+│  3-b. Lore 저장: chronicle(lore, chunk, session_id) 호출        │
 │  4. 추가 청크 있으면 반복 (같은 가이드 사용)                    │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
@@ -232,32 +290,57 @@ Level 2: 실제 청크 (VectorDB)
 [REST 모드 진입]
 Agent → rest() → MCP가 시스템 가이드 검색 → 가이드 + 세션 ID 반환
 
-[Scribe - 저장]
+=== Canon (메인 저장소) ===
+
+[Scribe - Canon 저장]
 (REST 모드 필수)
 Agent가 청크 정리 → scribe(chunk, session_id) →
-    MCP가 세션 검증 → 임베딩 → VectorDB 저장 → 목차 업데이트
+    MCP가 세션 검증 → 임베딩 → Canon(chunks) 저장 → 목차 업데이트
+
+[Memorize - Canon 의미 기반 검색]
+Agent가 질문 → memorize(query) → MCP가 임베딩 → Canon에서 벡터 유사도 검색 → 청크 반환
+
+[Find - Canon 키워드 기반 검색]
+Agent가 키워드 → find(keywords) → Canon에서 Full-text search → 청크 반환
+
+=== Lore (서브 저장소) ===
+
+[Chronicle - Lore 저장]
+(REST 모드 필수)
+Agent가 청크 정리 → chronicle(lore, chunk, session_id) →
+    MCP가 세션 검증 → Lore 존재 확인 (없으면 자동 생성) →
+    임베딩 → Lore(lore_{name}) 저장 → Lore 목차 업데이트
+
+[Recall - Lore 의미 기반 검색]
+Agent가 질문 → recall(lore, query) → MCP가 임베딩 → Lore에서 벡터 유사도 검색 → 청크 반환
+
+[Recall Find - Lore 키워드 기반 검색]
+Agent가 키워드 → recall_find(lore, keywords) → Lore에서 Full-text search → 청크 반환
+
+=== 공통 ===
 
 [REST 모드 종료]
 Agent → rest_end(session_id) → MCP가 세션 종료 → 통계 반환
-
-[Memorize - 의미 기반 검색]
-Agent가 질문 → memorize(query) → MCP가 임베딩 → 벡터 유사도 검색 → 청크 반환
-
-[Find - 키워드 기반 검색]
-Agent가 키워드 → find(keywords) → Full-text search → 청크 반환
 ```
 
 ### 6. REST 모드 에러 처리
 
 ```typescript
-// REST 모드 외부에서 scribe 시도
+// REST 모드 외부에서 scribe/chronicle 시도
 scribe(chunk) → Error: "REST 모드가 아닙니다. rest()를 먼저 호출하세요."
+chronicle(lore, chunk) → Error: "REST 모드가 아닙니다. rest()를 먼저 호출하세요."
 
-// 잘못된 세션 ID로 scribe 시도
+// 잘못된 세션 ID로 시도
 scribe(chunk, "invalid-id") → Error: "유효하지 않은 REST 세션입니다."
 
 // 세션 만료 (1시간 초과)
 scribe(chunk, "expired-id") → Error: "REST 세션이 만료되었습니다. rest()를 다시 호출하세요."
+
+// 존재하지 않는 Lore에서 검색 시도
+recall(lore: "없는이름", query: "...") → Error: "Lore를 찾을 수 없습니다: \"없는이름\""
+
+// 잘못된 Lore 이름 형식
+chronicle(lore: "한글이름", ...) → Error: "유효하지 않은 Lore 이름. 영문, 숫자, 하이픈, 언더스코어만 가능."
 ```
 
 ---
@@ -273,9 +356,10 @@ MCP는 HTTP/SSE 방식으로 독립 서버로 실행된다.
 │                                                                     │
 │  세션 시작 → get_index() → 메타 목차 로드                           │
 │                                                                     │
-│  질문 → memorize(query) → 관련 청크 반환                            │
+│  Canon 검색 → memorize(query) / find(keywords)                      │
+│  Lore 검색  → recall(lore, query) / recall_find(lore, keywords)     │
 │                                                                     │
-│  새 정보 → Agent가 청킹 → scribe(chunk) → 저장                      │
+│  Canon 저장 → scribe(chunk) / Lore 저장 → chronicle(lore, chunk)    │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
                                 │
@@ -289,7 +373,8 @@ MCP는 HTTP/SSE 방식으로 독립 서버로 실행된다.
 │  │              spellbook 컨테이너 (MCP Server)                  │ │
 │  │                                                               │ │
 │  │  - 임베딩 생성 (Ollama 호출)                                  │ │
-│  │  - 검색/인덱싱                                                │ │
+│  │  - Canon/Lore 검색/인덱싱                                     │ │
+│  │  - Lore 생명주기 관리                                         │ │
 │  │  - Qdrant 연동                                                │ │
 │  │                                                               │ │
 │  │  ※ 청킹은 Agent가 담당                                       │ │
@@ -299,8 +384,9 @@ MCP는 HTTP/SSE 방식으로 독립 서버로 실행된다.
 │  ┌───────────────────────────────────────────────────────────────┐ │
 │  │              qdrant 컨테이너 (VectorDB)                       │ │
 │  │                                                               │ │
-│  │  - 벡터 저장/검색                                             │ │
-│  │  - 메타데이터 필터링                                          │ │
+│  │  - Canon: chunks + chunks_metadata                            │ │
+│  │  - Lore: lore_{name} + lore_{name}_metadata (각 Lore별)      │ │
+│  │  - 벡터 저장/검색, 메타데이터 필터링                          │ │
 │  └───────────────────────────────────────────────────────────────┘ │
 │                                                                     │
 │  Volume: ./data/qdrant (영속 데이터)                                │
@@ -328,36 +414,61 @@ MCP는 HTTP/SSE 방식으로 독립 서버로 실행된다.
 | `rest_end` | REST 모드 종료, 가이드 정리 | `session_id` | 종료 확인 메시지 |
 
 **REST 모드 특징:**
-- ✅ `scribe` 호출은 REST 모드에서만 가능
+- ✅ `scribe`와 `chronicle` 호출은 REST 모드에서만 가능
 - ✅ 한 세션에 여러 청크를 일관된 가이드로 저장 가능
 - ✅ 컨텍스트 효율: 필요 시점에만 가이드 로드/해제
-- ✅ 청킹 품질 강제: 모든 scribe가 동일한 규칙 참조
+- ✅ 청킹 품질 강제: 모든 scribe/chronicle이 동일한 규칙 참조
+- ✅ 한 세션에서 Canon과 Lore에 동시 저장 가능
 
-### Memorize (읽기/검색)
+### Canon 도구 - Memorize (읽기/검색)
 
 | 도구 | 설명 | 파라미터 |
 |------|------|----------|
 | `get_index` | 메타 목차 반환 (세션 시작 시 호출) | `scope?`: 범위 제한 |
-| `memorize` | 의미 기반 검색 (벡터 유사도) | `query`, `limit?`, `filter?` |
-| `find` | 키워드 기반 검색 (Full-text search) | `keywords`, `limit?`, `filter?` |
+| `memorize` | Canon 의미 기반 검색 (벡터 유사도) | `query`, `limit?`, `filter?` |
+| `find` | Canon 키워드 기반 검색 (Full-text search) | `keywords`, `limit?`, `filter?` |
 | `get_topic` | 특정 토픽의 모든 청크 조회 | `topic_id` |
 
-### Scribe (쓰기/저장)
+### Canon 도구 - Scribe (쓰기/저장)
 
 | 도구 | 설명 | 파라미터 | 제약 조건 |
 |------|------|----------|----------|
-| `scribe` | 새 정보 저장 | `chunk`, `session_id`, `source?`, `category?` | **REST 모드 필수** |
-| `erase` | 특정 청크 삭제 | `chunk_id` | - |
-| `revise` | 기존 청크 수정 | `chunk_id`, `new_text` | - |
+| `scribe` | Canon에 새 정보 저장 | `chunk`, `session_id`, `source?`, `category?` | **REST 모드 필수** |
+| `erase` | Canon에서 청크 삭제 | `chunk_id` | - |
+| `revise` | Canon에서 청크 수정 | `chunk_id`, `new_text` | - |
 
-### 관리 도구
+### Lore 도구 - Recall (읽기/검색)
 
 | 도구 | 설명 | 파라미터 |
 |------|------|----------|
-| `stats` | 저장소 통계 (청크 수, 카테고리별 분포) | - |
+| `recall` | Lore 의미 기반 검색 (벡터 유사도) | `lore`, `query`, `limit?`, `filter?` |
+| `recall_find` | Lore 키워드 기반 검색 (Full-text search) | `lore`, `keywords`, `limit?`, `filter?` |
+
+### Lore 도구 - Chronicle (쓰기/저장)
+
+| 도구 | 설명 | 파라미터 | 제약 조건 |
+|------|------|----------|----------|
+| `chronicle` | Lore에 새 정보 저장 | `lore`, `chunk`, `session_id`, `lore_description?`, `source?`, `category?` | **REST 모드 필수** |
+| `erase_lore` | Lore에서 청크 삭제 | `lore`, `chunk_id` | - |
+| `revise_lore` | Lore에서 청크 수정 | `lore`, `chunk_id`, `new_text` | - |
+
+### Lore 관리 도구
+
+| 도구 | 설명 | 파라미터 |
+|------|------|----------|
+| `list_lores` | 모든 Lore 목록 조회 (이름, 설명, 청크 수) | - |
+| `delete_lore` | Lore 삭제 (전체 컬렉션 삭제, 복구 불가) | `lore` |
+| `lore_stats` | 특정 Lore 통계 (청크 수, 카테고리별 분포) | `lore` |
+| `update_lore` | Lore 설명 업데이트 | `lore`, `description` |
+
+### 관리 도구 (공용)
+
+| 도구 | 설명 | 파라미터 |
+|------|------|----------|
+| `stats` | Canon 저장소 통계 (청크 수, 카테고리별 분포) | - |
 | `filter_guide` | 필터 사용법 가이드 조회 | - |
-| `export` | JSON 백업 내보내기 | - |
-| `import` | JSON 백업 가져오기 | `data`: `{ version?, chunks[] }` |
+| `export` | Canon JSON 백업 내보내기 | - |
+| `import` | Canon JSON 백업 가져오기 | `data`: `{ version?, chunks[] }` |
 
 ---
 
@@ -452,6 +563,50 @@ interface MetaIndex {
   total_chunks: number;
   last_updated: string;
 }
+```
+
+### LoreMetadata (Lore 메타데이터)
+
+메인 메타데이터 컬렉션에 `type: 'lore'`로 저장되는 Lore 등록 정보.
+
+```typescript
+interface LoreMetadata {
+  type: 'lore';
+  name: string;                        // Lore 이름
+  description: string;                 // Lore 설명
+  collection_name: string;             // Qdrant 벡터 컬렉션명 (lore_{name})
+  metadata_collection_name: string;    // Qdrant 메타데이터 컬렉션명 (lore_{name}_metadata)
+  created_at: string;
+  last_updated: string;
+}
+```
+
+### LoreInfo (Lore 목록 조회 결과)
+
+```typescript
+interface LoreInfo {
+  name: string;              // Lore 이름
+  description: string;       // Lore 설명
+  collection_name: string;   // Qdrant 컬렉션명
+  total_chunks: number;      // 저장된 청크 수
+  created_at: string;
+}
+```
+
+### Qdrant 컬렉션 구조
+
+```
+메인 메타데이터 컬렉션 (chunks_metadata)
+  ├── type: 'category' → 카테고리 정보
+  ├── type: 'topic'    → 토픽 정보
+  └── type: 'lore'     → Lore 등록 정보 (lore:{name})
+
+Canon 벡터 컬렉션 (chunks)
+  └── 메인 청크 데이터
+
+Lore별 컬렉션 (각 Lore마다 2개)
+  ├── lore_{name}           → Lore 벡터 컬렉션 (청크)
+  └── lore_{name}_metadata  → Lore 메타데이터 컬렉션 (토픽/카테고리)
 ```
 
 ---
@@ -558,15 +713,18 @@ spellbook/
 │   ├── config/
 │   │   └── index.ts                # 설정 로더 및 검증
 │   ├── tools/                      # MCP 도구 구현
-│   │   ├── memorize.ts             # 검색/읽기 도구
-│   │   ├── scribe.ts               # 저장/쓰기 도구
+│   │   ├── memorize.ts             # Canon 검색/읽기 도구
+│   │   ├── scribe.ts               # Canon 저장/쓰기 도구
+│   │   ├── recall.ts               # Lore 검색/읽기 도구
+│   │   ├── chronicle.ts            # Lore 저장/쓰기 도구
 │   │   ├── rest.ts                 # REST 세션 도구
 │   │   └── admin.ts                # 관리 도구
 │   ├── core/
 │   │   ├── embedder.ts             # 임베딩 생성 (Ollama 호출)
-│   │   ├── searcher.ts             # 검색 로직
+│   │   ├── searcher.ts             # 검색 로직 (Canon + Lore 공용)
 │   │   ├── rest-session.ts         # REST 세션 관리
 │   │   ├── metadata-service.ts     # 메타데이터 컬렉션 관리
+│   │   ├── lore-manager.ts         # Lore 생명주기 관리
 │   │   └── filter-utils.ts         # 필터 변환 헬퍼
 │   ├── db/
 │   │   └── qdrant.ts               # Qdrant 연동
@@ -622,13 +780,19 @@ Spellbook을 활용하려면 별도의 지침(CLAUDE.md, 시스템 프롬프트 
 ```markdown
 ## Spellbook 사용 규칙
 
-### 언제 memorize (검색)
-- 세션 시작 시 get_index()로 목차 확인
+### Canon vs Lore 사용 분리
+- **Canon**: 범용 지식, 시스템 가이드, 일반적인 결정 사항
+- **Lore**: 특정 프로젝트/주제에 한정된 정보 (프로젝트별 분리)
+
+### 언제 memorize/recall (검색)
+- 세션 시작 시 get_index()로 Canon 목차 확인
+- 범용 정보 검색: memorize(query) 또는 find(keywords)
+- 프로젝트 정보 검색: recall(lore, query) 또는 recall_find(lore, keywords)
 - 사용자가 과거 결정 사항을 물을 때
 - 프로젝트 컨벤션이나 설정을 확인할 때
 
-### 언제 scribe (저장)
-**중요: scribe는 REST 모드에서만 가능**
+### 언제 scribe/chronicle (저장)
+**중요: scribe와 chronicle 모두 REST 모드에서만 가능**
 
 1. **REST 모드 진입**
    ```
@@ -643,42 +807,74 @@ Spellbook을 활용하려면 별도의 지침(CLAUDE.md, 시스템 프롬프트 
    가이드 참고하여:
    - 의미 단위로 분할 (100-512 토큰)
    - 메타데이터 작성 (topic, keywords, questions, entities)
-   - scribe(chunk, session_id) 호출
+   - Canon 저장: scribe(chunk, session_id) 호출
+   - Lore 저장: chronicle(lore, chunk, session_id) 호출
 
 3. **REST 모드 종료**
    ```
    rest_end(session_id) 호출 → 통계 확인 → 가이드 정리
    ```
 
-### REST 워크플로우 예시
+### Canon 워크플로우 예시
 ```typescript
 // 1. REST 모드 진입
 const session = await rest();
-// → session_id, chunking_guide, metadata_rules 반환
 
-// 2. 가이드 참고하여 청킹
-const chunk1 = {
-  text: "Docker Compose는...",
-  metadata: {
-    topic_id: "infrastructure",
-    topic_name: "인프라",
-    category: "knowledge",
-    keywords: ["Docker", "Compose", "컨테이너"],
-    questions: ["Docker Compose 설정 방법은?"],
-    entities: [{ name: "Docker", type: "technology" }],
-    importance: "high"
-  }
-};
+// 2. Canon에 저장
+await scribe({
+  chunk: {
+    text: "Docker Compose는...",
+    metadata: {
+      topic_id: "infrastructure",
+      topic_name: "인프라",
+      category: "knowledge",
+      keywords: ["Docker", "Compose", "컨테이너"],
+      questions: ["Docker Compose 설정 방법은?"],
+      entities: [{ name: "Docker", type: "technology" }],
+      importance: "high"
+    }
+  },
+  session_id: session.session_id
+});
 
-await scribe(chunk1, session.session_id);
-
-// 3. 추가 청크 저장 (같은 가이드 사용)
-const chunk2 = { ... };
-await scribe(chunk2, session.session_id);
-
-// 4. REST 모드 종료
+// 3. REST 모드 종료
 await rest_end(session.session_id);
-// → "REST 모드 종료. 청킹 가이드 정리 가능. scribed_count: 2"
+```
+
+### Lore 워크플로우 예시
+```typescript
+// 1. REST 모드 진입
+const session = await rest();
+
+// 2. Lore에 저장 (Lore가 없으면 자동 생성)
+await chronicle({
+  lore: "my-project",
+  lore_description: "My Project 관련 기술 결정사항",
+  chunk: {
+    text: "인증은 JWT 기반으로...",
+    metadata: {
+      topic_id: "auth",
+      topic_name: "인증",
+      category: "architecture",
+      keywords: ["JWT", "인증", "토큰"],
+      questions: ["프로젝트 인증 방식은?"],
+      entities: [{ name: "JWT", type: "technology" }],
+      importance: "high"
+    }
+  },
+  session_id: session.session_id
+});
+
+// 3. REST 모드 종료
+await rest_end(session.session_id);
+
+// 4. Lore에서 검색
+await recall({ lore: "my-project", query: "인증 방식" });
+await recall_find({ lore: "my-project", keywords: ["JWT"] });
+
+// 5. Lore 관리
+await list_lores();          // 모든 Lore 목록 + 설명
+await lore_stats("my-project");  // 통계
 ```
 
 ### 저장하지 않을 것

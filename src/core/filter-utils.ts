@@ -161,15 +161,31 @@ export function getFilterGuide(): string {
 
 ## 예시
 
-### memorize (의미 기반 검색)
+### Canon 검색 (메인 저장소)
+
+#### memorize (의미 기반 검색)
 \`\`\`
 memorize(query: "Docker 설정", filter: { "category": "system" })
 \`\`\`
 
-### find (키워드 기반 검색)
+#### find (키워드 기반 검색)
 \`\`\`
 find(keywords: ["Docker"], filter: { "importance": "high" })
 \`\`\`
+
+### Lore 검색 (서브 저장소)
+
+#### recall (의미 기반 검색)
+\`\`\`
+recall(lore: "my-project", query: "인증 방식", filter: { "category": "architecture" })
+\`\`\`
+
+#### recall_find (키워드 기반 검색)
+\`\`\`
+recall_find(lore: "my-project", keywords: ["JWT"], filter: { "importance": "high" })
+\`\`\`
+
+※ Canon API(memorize, find)로는 Lore 데이터에 접근할 수 없고, Lore API(recall, recall_find)로는 Canon 데이터에 접근할 수 없습니다.
 `.trim();
 }
 

@@ -15,6 +15,9 @@ import type { RestTools } from './tools/rest.js';
 import type { ScribeTools } from './tools/scribe.js';
 import type { MemorizeTools } from './tools/memorize.js';
 import type { AdminTools } from './tools/admin.js';
+import type { ChronicleTools } from './tools/chronicle.js';
+import type { RecallTools } from './tools/recall.js';
+import type { LoreManager } from './core/lore-manager.js';
 import { getFilterGuide } from './core/filter-utils.js';
 
 export interface ToolHandlers {
@@ -22,6 +25,9 @@ export interface ToolHandlers {
   scribe: ScribeTools;
   memorize: MemorizeTools;
   admin: AdminTools;
+  chronicle: ChronicleTools;
+  recall: RecallTools;
+  loreManager: LoreManager;
 }
 
 export class MCPServer {
@@ -255,6 +261,231 @@ export class MCPServer {
       }
     );
 
+    // === Chronicle 도구 (Lore 저장) ===
+    server.tool(
+      'chronicle',
+      'Lore에 청크 저장 (REST 모드 필수)',
+      {
+        lore: z.string().describe('Lore 이름'),
+        lore_description: z.string().optional().describe('Lore 설명 (신규 생성 시 설정, 기존 Lore면 갱신)'),
+        chunk: z.object({
+          id: z.string().optional(),
+          text: z.string(),
+          metadata: z.object({
+            topic_id: z.string(),
+            topic_name: z.string().optional().describe('토픽의 사람이 읽을 수 있는 이름'),
+            category: z.string(),
+            sub_category: z.string().optional().describe('카테고리 하위 분류'),
+            keywords: z.array(z.string()),
+            questions: z.array(z.string()),
+            entities: z.array(z.object({
+              name: z.string(),
+              type: z.enum(['person', 'project', 'technology', 'organization', 'concept']),
+            })),
+            importance: z.enum(['high', 'medium', 'low']),
+            source: z.string().optional(),
+          }),
+        }).describe('저장할 청크 데이터'),
+        session_id: z.string().describe('REST 세션 ID'),
+        category: z.string().optional().describe('카테고리 (선택)'),
+        source: z.string().optional().describe('출처 (선택)'),
+      },
+      async (args) => {
+        const result = await this.tools.chronicle.chronicle(args as any);
+        return result;
+      }
+    );
+
+    server.tool(
+      'erase_lore',
+      'Lore에서 청크 삭제',
+      {
+        lore: z.string().describe('Lore 이름'),
+        chunk_id: z.string().describe('삭제할 청크 ID'),
+      },
+      async ({ lore, chunk_id }) => {
+        const result = await this.tools.chronicle.eraseLore(lore, chunk_id);
+        return result;
+      }
+    );
+
+    server.tool(
+      'revise_lore',
+      'Lore에서 청크 수정',
+      {
+        lore: z.string().describe('Lore 이름'),
+        chunk_id: z.string().describe('수정할 청크 ID'),
+        new_text: z.string().describe('새로운 텍스트'),
+      },
+      async ({ lore, chunk_id, new_text }) => {
+        const result = await this.tools.chronicle.reviseLore(lore, chunk_id, new_text);
+        return result;
+      }
+    );
+
+    // === Recall 도구 (Lore 검색) ===
+    server.tool(
+      'recall',
+      'Lore에서 의미 기반 검색',
+      {
+        lore: z.string().describe('Lore 이름'),
+        query: z.string().describe('검색 쿼리'),
+        limit: z.number().optional().describe('결과 수 제한 (기본: 5)'),
+        filter: z.record(z.string(), z.any()).optional().describe('메타데이터 필터'),
+      },
+      async (args) => {
+        const result = await this.tools.recall.recall(args);
+        return result;
+      }
+    );
+
+    server.tool(
+      'recall_find',
+      'Lore에서 키워드 기반 검색',
+      {
+        lore: z.string().describe('Lore 이름'),
+        keywords: z.array(z.string()).describe('검색 키워드 목록'),
+        limit: z.number().optional().describe('결과 수 제한 (기본: 5)'),
+        filter: z.record(z.string(), z.any()).optional().describe('메타데이터 필터'),
+      },
+      async (args) => {
+        const result = await this.tools.recall.recallFind(args);
+        return result;
+      }
+    );
+
+    // === Lore 관리 도구 ===
+    server.tool(
+      'list_lores',
+      '모든 Lore 목록 조회',
+      {},
+      async () => {
+        try {
+          const lores = await this.tools.loreManager.listLores();
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(
+                  {
+                    count: lores.length,
+                    lores,
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        } catch (error: any) {
+          return {
+            content: [{ type: 'text', text: JSON.stringify({ error: error.message }, null, 2) }],
+            isError: true,
+          };
+        }
+      }
+    );
+
+    server.tool(
+      'delete_lore',
+      'Lore 삭제 (전체 컬렉션 삭제, 복구 불가)',
+      {
+        lore: z.string().describe('삭제할 Lore 이름'),
+      },
+      async ({ lore }) => {
+        try {
+          await this.tools.loreManager.deleteLore(lore);
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(
+                  {
+                    status: 'success',
+                    message: `Lore "${lore}" 삭제 완료`,
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        } catch (error: any) {
+          return {
+            content: [{ type: 'text', text: JSON.stringify({ error: error.message }, null, 2) }],
+            isError: true,
+          };
+        }
+      }
+    );
+
+    server.tool(
+      'lore_stats',
+      '특정 Lore 통계 조회',
+      {
+        lore: z.string().describe('Lore 이름'),
+      },
+      async ({ lore }) => {
+        try {
+          const stats = await this.tools.loreManager.getLoreStats(lore);
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(
+                  {
+                    lore,
+                    ...stats,
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        } catch (error: any) {
+          return {
+            content: [{ type: 'text', text: JSON.stringify({ error: error.message }, null, 2) }],
+            isError: true,
+          };
+        }
+      }
+    );
+
+    server.tool(
+      'update_lore',
+      'Lore 설명 수정',
+      {
+        lore: z.string().describe('Lore 이름'),
+        description: z.string().describe('새로운 Lore 설명'),
+      },
+      async ({ lore, description }) => {
+        try {
+          await this.tools.loreManager.updateLoreDescription(lore, description);
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(
+                  {
+                    status: 'success',
+                    message: `Lore "${lore}" 설명 수정 완료`,
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        } catch (error: any) {
+          return {
+            content: [{ type: 'text', text: JSON.stringify({ error: error.message }, null, 2) }],
+            isError: true,
+          };
+        }
+      }
+    );
+
     return server;
   }
 
@@ -350,6 +581,9 @@ export class MCPServer {
         tools: [
           'rest', 'rest_end', 'scribe', 'erase', 'revise',
           'memorize', 'find', 'get_topic',
+          'chronicle', 'erase_lore', 'revise_lore',
+          'recall', 'recall_find',
+          'list_lores', 'delete_lore', 'lore_stats', 'update_lore',
           'stats', 'get_index', 'filter_guide', 'export', 'import',
         ],
       });

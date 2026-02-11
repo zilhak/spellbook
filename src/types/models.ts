@@ -121,11 +121,56 @@ export interface TopicMetadata {
   last_updated: string;
 }
 
+export interface LoreMetadata {
+  type: 'lore';
+  name: string;
+  description: string;
+  collection_name: string;
+  metadata_collection_name: string;
+  created_at: string;
+  last_updated: string;
+}
+
 export interface MetaIndex {
   categories: CategoryInfo[];
   total_topics: number;
   total_chunks: number;
   last_updated: string;
+}
+
+// ============================================================================
+// Lore (서브 컬렉션)
+// ============================================================================
+
+export interface LoreInfo {
+  name: string;
+  description: string;
+  collection_name: string;
+  total_chunks: number;
+  created_at: string;
+}
+
+export interface ChronicleRequest {
+  lore: string;
+  lore_description?: string;
+  chunk: Chunk;
+  session_id: string;
+  source?: string;
+  category?: string;
+}
+
+export interface RecallRequest {
+  lore: string;
+  query: string;
+  limit?: number;
+  filter?: Record<string, any>;
+}
+
+export interface RecallFindRequest {
+  lore: string;
+  keywords: string[];
+  limit?: number;
+  filter?: Record<string, any>;
 }
 
 // ============================================================================

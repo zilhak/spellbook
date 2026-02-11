@@ -19,11 +19,13 @@ export class SearchService {
 
   /**
    * 의미 기반 검색 (memorize 도구)
+   * collection 지정 시 해당 컬렉션에서 검색 (lore용)
    */
   async semanticSearch(
     query: string,
     limit: number = 5,
-    filter?: Record<string, any>
+    filter?: Record<string, any>,
+    collection?: string
   ): Promise<SearchResult[]> {
     // 쿼리 임베딩 생성
     const queryEmbedding = await this.embedder.embed(query);
@@ -32,12 +34,9 @@ export class SearchService {
     const qdrantFilter = convertToQdrantFilter(filter || {});
 
     // 벡터 유사도 검색
-    const results = await this.qdrant.search(
-      queryEmbedding,
-      limit,
-      qdrantFilter,
-      0.7 // 유사도 임계값
-    );
+    const results = collection
+      ? await this.qdrant.searchInCollection(collection, queryEmbedding, limit, qdrantFilter, 0.7)
+      : await this.qdrant.search(queryEmbedding, limit, qdrantFilter, 0.7);
 
     return results.map(r => ({
       id: r.id,
@@ -48,6 +47,7 @@ export class SearchService {
 
   /**
    * 키워드 기반 검색 (find 도구)
+   * collection 지정 시 해당 컬렉션에서 검색 (lore용)
    *
    * 하이브리드 접근:
    * 1. 키워드 필터링 (payload 검색)
@@ -56,7 +56,8 @@ export class SearchService {
   async keywordSearch(
     keywords: string[],
     limit: number = 5,
-    filter?: Record<string, any>
+    filter?: Record<string, any>,
+    collection?: string
   ): Promise<SearchResult[]> {
     // 키워드 필터 생성
     const keywordFilter = {
@@ -78,12 +79,9 @@ export class SearchService {
     const queryEmbedding = await this.embedder.embed(keywords.join(' '));
 
     // 하이브리드 검색
-    const results = await this.qdrant.search(
-      queryEmbedding,
-      limit,
-      combinedFilter,
-      0.6 // 키워드 검색은 임계값 낮게
-    );
+    const results = collection
+      ? await this.qdrant.searchInCollection(collection, queryEmbedding, limit, combinedFilter, 0.6)
+      : await this.qdrant.search(queryEmbedding, limit, combinedFilter, 0.6);
 
     return results.map(r => ({
       id: r.id,
@@ -94,21 +92,20 @@ export class SearchService {
 
   /**
    * 중복 감지
+   * collection 지정 시 해당 컬렉션에서 감지 (lore용)
    *
    * 유사도가 threshold 이상인 청크 검색
    */
   async detectDuplicates(
     text: string,
-    threshold: number = 0.95
+    threshold: number = 0.95,
+    collection?: string
   ): Promise<SearchResult[] | null> {
     const embedding = await this.embedder.embed(text);
 
-    const results = await this.qdrant.search(
-      embedding,
-      5,
-      undefined,
-      threshold
-    );
+    const results = collection
+      ? await this.qdrant.searchInCollection(collection, embedding, 5, undefined, threshold)
+      : await this.qdrant.search(embedding, 5, undefined, threshold);
 
     return results.length > 0
       ? results.map(r => ({

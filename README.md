@@ -6,16 +6,25 @@ VectorDB 기반 AI Agent 메모리 MCP 서버
 
 AI 에이전트 개인화 과정에서 축적되는 정보들을 VectorDB에 저장하고 의미 기반으로 검색합니다.
 
-- **Scribe**: 정보 저장 (REST 모드에서만)
-- **Memorize**: 의미 기반 검색
-- **Find**: 키워드 기반 검색
+**Canon (메인 저장소)**:
+- **Scribe**: Canon에 정보 저장 (REST 모드에서만)
+- **Memorize**: Canon 의미 기반 검색
+- **Find**: Canon 키워드 기반 검색
+
+**Lore (서브 저장소)**:
+- **Chronicle**: Lore에 정보 저장 (REST 모드에서만, Lore 이름 지정)
+- **Recall**: Lore 의미 기반 검색
+- **Recall Find**: Lore 키워드 기반 검색
+
+Canon과 Lore의 API는 완전히 분리되어 있습니다. Canon API로 Lore 데이터에 접근할 수 없고, 그 반대도 마찬가지입니다.
 
 **Spellbook은 단순한 저장소입니다.** 무엇을 저장하고 언제 검색할지는 사용자가 결정합니다.
 
 ## 핵심 특징
 
-- ✅ **REST 상태 관리**: 청킹 일관성 보장
-- ✅ **이중 검색**: 의미 기반 + 키워드 기반
+- ✅ **Canon + Lore**: 메인 저장소와 용도별 서브 저장소 분리
+- ✅ **REST 상태 관리**: 청킹 일관성 보장 (scribe/chronicle 공용)
+- ✅ **이중 검색**: 의미 기반 + 키워드 기반 (Canon/Lore 각각)
 - ✅ **nomic-embed-text**: 768차원, 한글/영어 우수
 - ✅ **HTTP/SSE MCP**: Docker로 간편 배포
 - ✅ **Bun 런타임**: 빠른 시작, TypeScript 네이티브 실행
@@ -104,10 +113,15 @@ Spellbook을 효과적으로 활용하려면, AI Agent의 시스템 프롬프트
 
 - 모르는 개념, 프로젝트 컨벤션, 과거 결정 사항이 나오면 먼저 Spellbook에서 검색하라
 - 세션 시작 시 get_index()로 어떤 정보가 저장되어 있는지 확인하라
-- 검색 방법:
+- Canon 검색 (범용 지식):
   - 맥락/개념이 궁금할 때: memorize(query)
   - 정확한 용어를 알 때: find(keywords)
+- Lore 검색 (프로젝트별 정보):
+  - 맥락/개념이 궁금할 때: recall(lore, query)
+  - 정확한 용어를 알 때: recall_find(lore, keywords)
 - 중요한 결정, 새로운 패턴, 사용자 선호도가 확인되면 REST 모드로 저장하라
+  - 범용 지식 → scribe (Canon)
+  - 프로젝트 한정 정보 → chronicle (Lore)
 ```
 
 이를 통해 Agent가 이전 세션에서 축적한 지식을 자연스럽게 활용하게 됩니다.
@@ -116,14 +130,13 @@ Spellbook을 효과적으로 활용하려면, AI Agent의 시스템 프롬프트
 
 ## 사용법
 
-### REST 워크플로우
+### Canon 워크플로우 (메인 저장소)
 
 ```typescript
 // 1. REST 모드 진입
 const session = await rest();
-// → {session_id, chunking_guide, metadata_rules}
 
-// 2. 청크 저장
+// 2. Canon에 청크 저장
 await scribe({
   chunk: {
     text: "Docker Compose는...",
@@ -141,16 +154,46 @@ await scribe({
 
 // 3. REST 종료
 await rest_end(session.session_id);
+
+// Canon 검색
+await memorize({query: "Docker 컨테이너 설정"});
+await find({keywords: ["Docker", "Qdrant"]});
 ```
 
-### 검색
+### Lore 워크플로우 (서브 저장소)
 
 ```typescript
-// 의미 기반 검색
-await memorize({query: "Docker 컨테이너 설정"});
+// 1. REST 모드 진입
+const session = await rest();
 
-// 키워드 검색
-await find({keywords: ["Docker", "Qdrant"]});
+// 2. Lore에 청크 저장 (Lore가 없으면 자동 생성)
+await chronicle({
+  lore: "my-project",
+  lore_description: "My Project 기술 결정사항",
+  chunk: {
+    text: "인증은 JWT 기반으로...",
+    metadata: {
+      topic_id: "auth",
+      category: "architecture",
+      keywords: ["JWT", "인증"],
+      questions: ["프로젝트 인증 방식은?"],
+      entities: [{name: "JWT", type: "technology"}],
+      importance: "high"
+    }
+  },
+  session_id: session.session_id
+});
+
+// 3. REST 종료
+await rest_end(session.session_id);
+
+// Lore 검색
+await recall({lore: "my-project", query: "인증 방식"});
+await recall_find({lore: "my-project", keywords: ["JWT"]});
+
+// Lore 관리
+await list_lores();              // 모든 Lore 목록 + 설명
+await lore_stats("my-project");  // 특정 Lore 통계
 ```
 
 ## 데이터 관리
@@ -251,21 +294,42 @@ bun run seed
 
 ## MCP 도구
 
+### 공용
+
 | 도구 | 설명 | 제약 |
 |------|------|------|
 | `rest` | REST 모드 시작 | - |
 | `rest_end` | REST 모드 종료 | - |
-| `scribe` | 청크 저장 | **REST 모드 필수** |
-| `memorize` | 의미 검색 | - |
-| `find` | 키워드 검색 | - |
-| `get_topic` | 토픽 조회 | - |
-| `erase` | 청크 삭제 | - |
-| `revise` | 청크 수정 | - |
-| `stats` | 통계 | - |
 | `get_index` | 메타 목차 | - |
+| `stats` | Canon 통계 | - |
 | `filter_guide` | 필터 사용법 가이드 | - |
-| `export` | JSON 백업 | - |
-| `import` | JSON 복원 | - |
+| `export` | Canon JSON 백업 | - |
+| `import` | Canon JSON 복원 | - |
+
+### Canon (메인 저장소)
+
+| 도구 | 설명 | 제약 |
+|------|------|------|
+| `scribe` | Canon에 청크 저장 | **REST 모드 필수** |
+| `memorize` | Canon 의미 검색 | - |
+| `find` | Canon 키워드 검색 | - |
+| `get_topic` | 토픽 조회 | - |
+| `erase` | Canon 청크 삭제 | - |
+| `revise` | Canon 청크 수정 | - |
+
+### Lore (서브 저장소)
+
+| 도구 | 설명 | 제약 |
+|------|------|------|
+| `chronicle` | Lore에 청크 저장 | **REST 모드 필수** |
+| `recall` | Lore 의미 검색 | - |
+| `recall_find` | Lore 키워드 검색 | - |
+| `erase_lore` | Lore 청크 삭제 | - |
+| `revise_lore` | Lore 청크 수정 | - |
+| `list_lores` | 모든 Lore 목록 | - |
+| `delete_lore` | Lore 삭제 (복구 불가) | - |
+| `lore_stats` | Lore 통계 | - |
+| `update_lore` | Lore 설명 수정 | - |
 
 ## 아키텍처
 
@@ -275,9 +339,14 @@ Claude Code
     ▼
 Spellbook (Bun + MCP SDK)
     │
-    ├─ REST 세션 관리
+    ├─ REST 세션 관리 (scribe/chronicle 공용)
+    ├─ Canon 도구 (scribe, memorize, find)
+    ├─ Lore 도구 (chronicle, recall, recall_find)
+    ├─ Lore 관리 (list_lores, delete_lore, lore_stats, update_lore)
     ├─ 임베딩 (Ollama + nomic-embed-text)
     └─ VectorDB (Qdrant)
+         ├─ Canon: chunks + chunks_metadata
+         └─ Lore: lore_{name} + lore_{name}_metadata (각각)
 ```
 
 ## 기술 스택
