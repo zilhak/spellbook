@@ -24,7 +24,7 @@ services:
     volumes:
       - ${QDRANT_DATA_PATH:-./data/qdrant}:/qdrant/storage
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:6333/healthz || exit 1"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333' || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 10
