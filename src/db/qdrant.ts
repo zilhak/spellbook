@@ -7,7 +7,26 @@
  */
 
 import { QdrantClient } from '@qdrant/js-client-rest';
+import { v5 as uuidv5 } from 'uuid';
 import type { QdrantConfig } from '../types/models.js';
+
+// UUID v5 네임스페이스 (Spellbook 메타데이터 전용)
+const METADATA_UUID_NAMESPACE = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
+
+/**
+ * 문자열 ID를 Qdrant 호환 ID로 변환
+ * Qdrant는 unsigned integer 또는 UUID만 허용
+ * 비-UUID 문자열은 UUID v5로 변환 (결정적 매핑)
+ */
+function toQdrantId(id: string): string {
+  // UUID 형식인지 확인
+  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (UUID_REGEX.test(id)) {
+    return id;
+  }
+  // 비-UUID 문자열은 결정적 UUID v5로 변환
+  return uuidv5(id, METADATA_UUID_NAMESPACE);
+}
 
 export class QdrantService {
   private client: QdrantClient;
@@ -327,6 +346,7 @@ export class QdrantService {
 
   /**
    * 범용 포인트 upsert (더미 벡터 [0] 사용)
+   * ID는 자동으로 Qdrant 호환 UUID로 변환됨
    */
   async upsertPoint(
     collection: string,
@@ -337,7 +357,7 @@ export class QdrantService {
       wait: true,
       points: [
         {
-          id,
+          id: toQdrantId(id),
           vector: [0],
           payload,
         },
@@ -347,11 +367,12 @@ export class QdrantService {
 
   /**
    * 범용 포인트 조회
+   * ID는 자동으로 Qdrant 호환 UUID로 변환됨
    */
   async getPointById(collection: string, id: string): Promise<any | null> {
     try {
       const result = await this.client.retrieve(collection, {
-        ids: [id],
+        ids: [toQdrantId(id)],
         with_payload: true,
         with_vector: false,
       });
@@ -363,11 +384,12 @@ export class QdrantService {
 
   /**
    * 범용 포인트 삭제
+   * ID는 자동으로 Qdrant 호환 UUID로 변환됨
    */
   async deletePoint(collection: string, id: string): Promise<void> {
     await this.client.delete(collection, {
       wait: true,
-      points: [id],
+      points: [toQdrantId(id)],
     });
   }
 

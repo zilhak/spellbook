@@ -106,6 +106,7 @@ export class ChronicleTools {
         content: [{ type: 'text', text: JSON.stringify(response, null, 2) }],
       };
     } catch (error: any) {
+      console.error('chronicle 에러:', error.message, error.stack || '');
       const response: ScribeResponse = {
         status: 'error',
         message: error.message || '저장 실패',

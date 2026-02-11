@@ -521,6 +521,10 @@ export class MCPServer {
             }
           };
 
+          transport.onerror = (error) => {
+            console.error('MCP Transport 에러:', error);
+          };
+
           const server = this.createMcpServer();
           await server.connect(transport);
         } else {
