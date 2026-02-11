@@ -61,10 +61,21 @@ export class MCPServer {
    * MCP 서버 인스턴스 생성 및 도구 등록
    */
   private createMcpServer(): McpServer {
-    const server = new McpServer({
-      name: 'spellbook',
-      version: '1.0.0',
-    });
+    const server = new McpServer(
+      {
+        name: 'spellbook',
+        version: '1.0.0',
+      },
+      {
+        instructions: [
+          'Spellbook은 두 종류의 저장소를 제공합니다:',
+          '- Canon: 기본 컬렉션. 범용 지식이 축적되는 메인 저장소 (scribe, memorize, find, erase, revise, get_topic, stats, get_index, export, import)',
+          '- Lore: 이름 붙은 서브 컬렉션. 용도별로 분리된 독립 저장소 (chronicle, recall, recall_find, erase_lore, revise_lore, list_lores, delete_lore, lore_stats, update_lore)',
+          'Canon과 Lore는 완전히 격리된 API입니다. Canon API로 Lore 데이터에 접근할 수 없고, 그 반대도 마찬가지입니다.',
+          '저장(scribe/chronicle)은 REST 모드에서만 가능합니다. rest() → scribe/chronicle → rest_end() 순서로 호출하세요.',
+        ].join('\n'),
+      },
+    );
 
     // === REST 도구 ===
     server.tool(
@@ -92,7 +103,7 @@ export class MCPServer {
     // === Scribe 도구 ===
     server.tool(
       'scribe',
-      '청크 저장 (REST 모드 필수)',
+      'Canon(기본 컬렉션)에 청크 저장 (REST 모드 필수)',
       {
         chunk: z.object({
           id: z.string().optional(),
@@ -124,7 +135,7 @@ export class MCPServer {
 
     server.tool(
       'erase',
-      '청크 삭제',
+      'Canon에서 청크 삭제',
       {
         chunk_id: z.string().describe('삭제할 청크 ID'),
       },
@@ -136,7 +147,7 @@ export class MCPServer {
 
     server.tool(
       'revise',
-      '청크 수정',
+      'Canon에서 청크 수정',
       {
         chunk_id: z.string().describe('수정할 청크 ID'),
         new_text: z.string().describe('새로운 텍스트'),
@@ -150,7 +161,7 @@ export class MCPServer {
     // === Memorize 도구 ===
     server.tool(
       'memorize',
-      '의미 기반 검색',
+      'Canon에서 의미 기반 검색 (벡터 유사도)',
       {
         query: z.string().describe('검색 쿼리'),
         limit: z.number().optional().describe('결과 수 제한 (기본: 5)'),
@@ -164,7 +175,7 @@ export class MCPServer {
 
     server.tool(
       'find',
-      '키워드 기반 검색',
+      'Canon에서 키워드 기반 검색 (Full-text)',
       {
         keywords: z.array(z.string()).describe('검색 키워드 목록'),
         limit: z.number().optional().describe('결과 수 제한 (기본: 5)'),
@@ -178,7 +189,7 @@ export class MCPServer {
 
     server.tool(
       'get_topic',
-      '특정 토픽의 모든 청크 조회',
+      'Canon에서 특정 토픽의 모든 청크 조회',
       {
         topic_id: z.string().describe('토픽 ID'),
       },
@@ -191,7 +202,7 @@ export class MCPServer {
     // === Admin 도구 ===
     server.tool(
       'stats',
-      '저장소 통계',
+      'Canon 저장소 통계',
       {},
       async () => {
         const result = await this.tools.admin.stats();
@@ -201,7 +212,7 @@ export class MCPServer {
 
     server.tool(
       'get_index',
-      '메타 목차 조회',
+      'Canon 메타 목차 조회',
       {
         scope: z.string().optional().describe('범위 제한 (선택)'),
       },
@@ -224,7 +235,7 @@ export class MCPServer {
 
     server.tool(
       'export',
-      'JSON 백업 내보내기',
+      'Canon JSON 백업 내보내기',
       {},
       async () => {
         const result = await this.tools.admin.export();
@@ -234,7 +245,7 @@ export class MCPServer {
 
     server.tool(
       'import',
-      'JSON 백업 가져오기',
+      'Canon JSON 백업 가져오기',
       {
         data: z.object({
           version: z.string().optional().describe('백업 버전 (선택)'),
