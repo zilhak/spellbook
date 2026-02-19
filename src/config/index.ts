@@ -35,6 +35,10 @@ export function loadConfig(): ServerConfig {
       collectionName: getEnvOrDefault('QDRANT_COLLECTION', 'chunks'),
       metadataCollectionName: getEnvOrDefault('QDRANT_METADATA_COLLECTION', 'metadata'),
     },
+
+    sqlite: {
+      dbPath: getEnvOrDefault('SQLITE_DB_PATH', './data/sqlite/data.db'),
+    },
   };
 }
 

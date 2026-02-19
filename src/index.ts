@@ -14,12 +14,15 @@ import { RestSessionManager } from './core/rest-session.js';
 import { MetadataService } from './core/metadata-service.js';
 import { LoreManager } from './core/lore-manager.js';
 import { QdrantService } from './db/qdrant.js';
+import { SQLiteService } from './db/sqlite.js';
+import { ScrollService } from './core/scroll-service.js';
 import { RestTools } from './tools/rest.js';
 import { ScribeTools } from './tools/scribe.js';
 import { MemorizeTools } from './tools/memorize.js';
 import { AdminTools } from './tools/admin.js';
 import { ChronicleTools } from './tools/chronicle.js';
 import { RecallTools } from './tools/recall.js';
+import { ScrollTools } from './tools/scroll.js';
 import { MCPServer } from './server.js';
 
 async function main() {
@@ -58,15 +61,23 @@ async function main() {
     console.log('📚 Lore 관리자 초기화 중...');
     const loreManager = new LoreManager(qdrant, config.embedding.dimensions, config.qdrant.metadataCollectionName);
 
-    // 7. MCP 도구들 초기화
+    // 7. SQLite + Scroll 초기화
+    console.log('📜 Scroll 저장소 초기화 중...');
+    const sqliteService = new SQLiteService(config.sqlite.dbPath);
+    const scrollService = new ScrollService(sqliteService.getDb());
+    console.log(`   - DB: ${config.sqlite.dbPath}`);
+    console.log('');
+
+    // 8. MCP 도구들 초기화
     const restTools = new RestTools(sessionManager);
     const scribeTools = new ScribeTools(sessionManager, searcher, embedder, qdrant, metadataService);
     const memorizeTools = new MemorizeTools(searcher);
     const adminTools = new AdminTools(qdrant, searcher, embedder, metadataService);
     const chronicleTools = new ChronicleTools(sessionManager, searcher, embedder, qdrant, loreManager);
     const recallTools = new RecallTools(searcher, loreManager);
+    const scrollTools = new ScrollTools(scrollService);
 
-    // 8. MCP 서버 생성 및 시작
+    // 9. MCP 서버 생성 및 시작
     const server = new MCPServer({
       rest: restTools,
       scribe: scribeTools,
@@ -75,12 +86,13 @@ async function main() {
       chronicle: chronicleTools,
       recall: recallTools,
       loreManager: loreManager,
+      scroll: scrollTools,
     });
 
     server.start(config.port, config.host);
     console.log('');
 
-    // 9. 시스템 가이드 확인
+    // 10. 시스템 가이드 확인
     const isEmpty = await qdrant.isEmpty();
     if (isEmpty) {
       console.log('⚠️  VectorDB가 비어있습니다.');

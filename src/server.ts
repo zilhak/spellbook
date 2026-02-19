@@ -17,6 +17,7 @@ import type { MemorizeTools } from './tools/memorize.js';
 import type { AdminTools } from './tools/admin.js';
 import type { ChronicleTools } from './tools/chronicle.js';
 import type { RecallTools } from './tools/recall.js';
+import type { ScrollTools } from './tools/scroll.js';
 import type { LoreManager } from './core/lore-manager.js';
 import { getFilterGuide } from './core/filter-utils.js';
 
@@ -28,6 +29,7 @@ export interface ToolHandlers {
   chronicle: ChronicleTools;
   recall: RecallTools;
   loreManager: LoreManager;
+  scroll: ScrollTools;
 }
 
 export class MCPServer {
@@ -68,11 +70,14 @@ export class MCPServer {
       },
       {
         instructions: [
-          'Spellbook은 두 종류의 저장소를 제공합니다:',
+          'Spellbook은 세 종류의 저장소를 제공합니다:',
           '- Canon: 기본 컬렉션. 범용 지식이 축적되는 메인 저장소 (scribe, memorize, find, erase, revise, get_topic, stats, get_index, export, import)',
           '- Lore: 이름 붙은 서브 컬렉션. 용도별로 분리된 독립 저장소 (chronicle, recall, recall_find, erase_lore, revise_lore, list_lores, delete_lore, lore_stats, update_lore)',
+          '- Scroll: 엄격한 문서 저장소. 독립적인 문서를 카테고리/라벨로 분류하여 보관 (write_scroll, read_scroll, modify_scroll, delete_scroll, get_scroll_index)',
           'Canon과 Lore는 완전히 격리된 API입니다. Canon API로 Lore 데이터에 접근할 수 없고, 그 반대도 마찬가지입니다.',
+          'Scroll은 Canon/Lore와 별도의 SQLite 저장소로, 의미검색 없이 CRUD + 필터 조회만 지원합니다.',
           '저장(scribe/chronicle)은 REST 모드에서만 가능합니다. rest() → scribe/chronicle → rest_end() 순서로 호출하세요.',
+          'Scroll은 REST 모드 없이 바로 write_scroll로 저장 가능합니다.',
         ].join('\n'),
       },
     );
@@ -497,6 +502,72 @@ export class MCPServer {
       }
     );
 
+    // === Scroll 도구 ===
+    server.tool(
+      'write_scroll',
+      'Scroll에 문서 저장',
+      {
+        title: z.string().describe('문서 제목'),
+        content: z.string().describe('문서 내용'),
+        category: z.string().describe('카테고리 (필수)'),
+        sub_category: z.string().optional().describe('서브카테고리 (선택)'),
+        labels: z.array(z.string()).optional().describe('라벨 목록 (선택)'),
+      },
+      async (args) => {
+        return await this.tools.scroll.writeScroll(args);
+      }
+    );
+
+    server.tool(
+      'read_scroll',
+      'Scroll 문서 조회 (ID 단건 또는 필터 조회)',
+      {
+        id: z.string().optional().describe('스크롤 ID (단건 조회)'),
+        category: z.string().optional().describe('카테고리 필터'),
+        sub_category: z.string().optional().describe('서브카테고리 필터'),
+        label: z.string().optional().describe('라벨 필터'),
+      },
+      async (args) => {
+        return await this.tools.scroll.readScroll(args);
+      }
+    );
+
+    server.tool(
+      'modify_scroll',
+      'Scroll 문서 수정',
+      {
+        id: z.string().describe('수정할 스크롤 ID'),
+        title: z.string().optional().describe('새 제목'),
+        content: z.string().optional().describe('새 내용'),
+        category: z.string().optional().describe('새 카테고리'),
+        sub_category: z.string().optional().describe('새 서브카테고리 (빈 문자열로 제거)'),
+        labels: z.array(z.string()).optional().describe('새 라벨 목록 (전체 교체)'),
+      },
+      async (args) => {
+        return await this.tools.scroll.modifyScroll(args);
+      }
+    );
+
+    server.tool(
+      'delete_scroll',
+      'Scroll 문서 삭제',
+      {
+        id: z.string().describe('삭제할 스크롤 ID'),
+      },
+      async ({ id }) => {
+        return await this.tools.scroll.deleteScroll(id);
+      }
+    );
+
+    server.tool(
+      'get_scroll_index',
+      'Scroll 인덱스 조회 (카테고리, 서브카테고리, 라벨 목록과 개수)',
+      {},
+      async () => {
+        return await this.tools.scroll.getScrollIndex();
+      }
+    );
+
     return server;
   }
 
@@ -600,6 +671,7 @@ export class MCPServer {
           'recall', 'recall_find',
           'list_lores', 'delete_lore', 'lore_stats', 'update_lore',
           'stats', 'get_index', 'filter_guide', 'export', 'import',
+          'write_scroll', 'read_scroll', 'modify_scroll', 'delete_scroll', 'get_scroll_index',
         ],
       });
     });

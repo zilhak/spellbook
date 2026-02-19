@@ -222,6 +222,59 @@ export interface SearchResult {
 }
 
 // ============================================================================
+// Scroll (엄격한 문서 저장소)
+// ============================================================================
+
+export interface Scroll {
+  id: string;
+  title: string;
+  content: string;
+  category: string;
+  sub_category?: string;
+  labels: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ScrollWriteRequest {
+  title: string;
+  content: string;
+  category: string;
+  sub_category?: string;
+  labels?: string[];
+}
+
+export interface ScrollReadRequest {
+  id?: string;
+  category?: string;
+  sub_category?: string;
+  label?: string;
+}
+
+export interface ScrollModifyRequest {
+  id: string;
+  title?: string;
+  content?: string;
+  category?: string;
+  sub_category?: string;
+  labels?: string[];
+}
+
+export interface ScrollIndexEntry {
+  type: 'category' | 'sub_category' | 'label';
+  name: string;
+  parent: string | null;
+  count: number;
+}
+
+export interface ScrollIndex {
+  total_scrolls: number;
+  categories: ScrollIndexEntry[];
+  sub_categories: ScrollIndexEntry[];
+  labels: ScrollIndexEntry[];
+}
+
+// ============================================================================
 // 설정 타입
 // ============================================================================
 
@@ -238,9 +291,14 @@ export interface QdrantConfig {
   metadataCollectionName: string;
 }
 
+export interface SQLiteConfig {
+  dbPath: string;
+}
+
 export interface ServerConfig {
   port: number;
   host: string;
   embedding: EmbeddingConfig;
   qdrant: QdrantConfig;
+  sqlite: SQLiteConfig;
 }
