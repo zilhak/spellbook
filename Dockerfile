@@ -13,8 +13,9 @@ RUN bun install --frozen-lockfile --production
 COPY src ./src
 COPY tsconfig.json ./
 
-# 엔트리포인트 스크립트 복사
+# 엔트리포인트 스크립트 복사 및 CRLF→LF 변환
 COPY docker-entrypoint.sh ./
+RUN sed -i 's/\r$//' docker-entrypoint.sh && chmod +x docker-entrypoint.sh
 
 # 포트 노출
 EXPOSE 17950
