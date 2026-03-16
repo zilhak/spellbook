@@ -30,7 +30,7 @@ Thumbs.db
 .docker/
 
 # Data (Qdrant 영속 데이터)
-data/
+/data/
 *.db
 *.sqlite
 
