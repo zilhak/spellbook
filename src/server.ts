@@ -18,6 +18,7 @@ import type { AdminTools } from './tools/admin.js';
 import type { ChronicleTools } from './tools/chronicle.js';
 import type { RecallTools } from './tools/recall.js';
 import type { ScrollTools } from './tools/scroll.js';
+import type { MaintenanceTools } from './tools/maintenance.js';
 import type { LoreManager } from './core/lore-manager.js';
 import { getFilterGuide } from './core/filter-utils.js';
 
@@ -30,6 +31,7 @@ export interface ToolHandlers {
   recall: RecallTools;
   loreManager: LoreManager;
   scroll: ScrollTools;
+  maintenance: MaintenanceTools;
 }
 
 export class MCPServer {
@@ -611,6 +613,29 @@ export class MCPServer {
       }
     );
 
+    // === 유지보수/운영 도구 (Canon/Lore 공용) ===
+    server.tool(
+      'reindex',
+      '대상 저장소의 모든 청크를 현재 임베딩 모델로 재생성 (모델 교체/vector_count:0/손상 복구). lore 미지정 시 Canon.',
+      {
+        lore: z.string().optional().describe('Lore 이름 (미지정 시 Canon)'),
+      },
+      async ({ lore }) => {
+        return await this.tools.maintenance.reindex(lore);
+      }
+    );
+
+    server.tool(
+      'health',
+      '저장소 정합성 진단 (total_count vs vector_count 불일치, 고아 메타데이터 감지). lore 미지정 시 Canon.',
+      {
+        lore: z.string().optional().describe('Lore 이름 (미지정 시 Canon)'),
+      },
+      async ({ lore }) => {
+        return await this.tools.maintenance.health(lore);
+      }
+    );
+
     // === Scroll 도구 ===
     server.tool(
       'write_scroll',
@@ -780,6 +805,7 @@ export class MCPServer {
           'recall', 'recall_find', 'recall_list', 'recall_topic',
           'list_lores', 'delete_lore', 'lore_stats', 'update_lore',
           'stats', 'get_index', 'filter_guide', 'export', 'import',
+          'reindex', 'health',
           'write_scroll', 'read_scroll', 'modify_scroll', 'delete_scroll', 'get_scroll_index',
         ],
       });

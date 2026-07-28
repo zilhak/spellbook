@@ -23,6 +23,7 @@ import { AdminTools } from './tools/admin.js';
 import { ChronicleTools } from './tools/chronicle.js';
 import { RecallTools } from './tools/recall.js';
 import { ScrollTools } from './tools/scroll.js';
+import { MaintenanceTools } from './tools/maintenance.js';
 import { MCPServer } from './server.js';
 
 async function main() {
@@ -76,6 +77,13 @@ async function main() {
     const chronicleTools = new ChronicleTools(sessionManager, searcher, embedder, qdrant, loreManager);
     const recallTools = new RecallTools(searcher, loreManager);
     const scrollTools = new ScrollTools(scrollService);
+    const maintenanceTools = new MaintenanceTools(
+      qdrant,
+      embedder,
+      loreManager,
+      metadataService,
+      config.qdrant.metadataCollectionName
+    );
 
     // 9. MCP 서버 생성 및 시작
     const server = new MCPServer({
@@ -87,6 +95,7 @@ async function main() {
       recall: recallTools,
       loreManager: loreManager,
       scroll: scrollTools,
+      maintenance: maintenanceTools,
     });
 
     server.start(config.port, config.host);
