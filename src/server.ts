@@ -72,7 +72,7 @@ export class MCPServer {
         instructions: [
           'Spellbook은 세 종류의 저장소를 제공합니다:',
           '- Canon: 기본 컬렉션. 범용 지식이 축적되는 메인 저장소 (scribe, memorize, find, erase, revise, get_topic, stats, get_index, export, import)',
-          '- Lore: 이름 붙은 서브 컬렉션. 용도별로 분리된 독립 저장소 (chronicle, recall, recall_find, erase_lore, revise_lore, list_lores, delete_lore, lore_stats, update_lore)',
+          '- Lore: 이름 붙은 서브 컬렉션. 용도별로 분리된 독립 저장소 (chronicle, recall, recall_find, recall_list, erase_lore, revise_lore, list_lores, delete_lore, lore_stats, update_lore)',
           '- Scroll: 엄격한 문서 저장소. 독립적인 문서를 카테고리/라벨로 분류하여 보관 (write_scroll, read_scroll, modify_scroll, delete_scroll, get_scroll_index)',
           'Canon과 Lore는 완전히 격리된 API입니다. Canon API로 Lore 데이터에 접근할 수 없고, 그 반대도 마찬가지입니다.',
           'Scroll은 Canon/Lore와 별도의 SQLite 저장소로, 의미검색 없이 CRUD + 필터 조회만 지원합니다.',
@@ -171,6 +171,7 @@ export class MCPServer {
         query: z.string().describe('검색 쿼리'),
         limit: z.number().optional().describe('결과 수 제한 (기본: 5)'),
         filter: z.record(z.string(), z.any()).optional().describe('메타데이터 필터'),
+        threshold: z.number().optional().describe('벡터 유사도 임계값 (기본: 0.7). 낮추면 더 많은 결과'),
       },
       async (args) => {
         const result = await this.tools.memorize.memorize(args);
@@ -180,11 +181,13 @@ export class MCPServer {
 
     server.tool(
       'find',
-      'Canon에서 키워드 기반 검색 (Full-text)',
+      'Canon에서 키워드 기반 검색 (기본: 순수 필터 매칭, 벡터 threshold 게이팅 없음)',
       {
         keywords: z.array(z.string()).describe('검색 키워드 목록'),
         limit: z.number().optional().describe('결과 수 제한 (기본: 5)'),
         filter: z.record(z.string(), z.any()).optional().describe('메타데이터 필터'),
+        hybrid: z.boolean().optional().describe('true 시 벡터 확장 하이브리드 검색 (기본: false, 순수 필터)'),
+        threshold: z.number().optional().describe('hybrid 모드 벡터 유사도 임계값 (기본: 0.6)'),
       },
       async (args) => {
         const result = await this.tools.memorize.find(args);
@@ -348,6 +351,7 @@ export class MCPServer {
         query: z.string().describe('검색 쿼리'),
         limit: z.number().optional().describe('결과 수 제한 (기본: 5)'),
         filter: z.record(z.string(), z.any()).optional().describe('메타데이터 필터'),
+        threshold: z.number().optional().describe('벡터 유사도 임계값 (기본: 0.7). 낮추면 더 많은 결과'),
       },
       async (args) => {
         const result = await this.tools.recall.recall(args);
@@ -357,16 +361,53 @@ export class MCPServer {
 
     server.tool(
       'recall_find',
-      'Lore에서 키워드 기반 검색',
+      'Lore에서 키워드 기반 검색 (기본: 순수 필터 매칭, 벡터 threshold 게이팅 없음)',
       {
         lore: z.string().describe('Lore 이름'),
         keywords: z.array(z.string()).describe('검색 키워드 목록'),
         limit: z.number().optional().describe('결과 수 제한 (기본: 5)'),
         filter: z.record(z.string(), z.any()).optional().describe('메타데이터 필터'),
+        hybrid: z.boolean().optional().describe('true 시 벡터 확장 하이브리드 검색 (기본: false, 순수 필터)'),
+        threshold: z.number().optional().describe('hybrid 모드 벡터 유사도 임계값 (기본: 0.6)'),
       },
       async (args) => {
         const result = await this.tools.recall.recallFind(args);
         return result;
+      }
+    );
+
+    server.tool(
+      'recall_list',
+      'Lore의 모든 청크를 검색 없이 나열 (스크롤). recall/recall_find는 벡터 유사도 기반이라 누락될 수 있는 청크까지 전부 반환. id는 revise_lore/erase_lore에 사용 가능.',
+      {
+        lore: z.string().describe('Lore 이름'),
+        limit: z.number().optional().describe('반환할 최대 청크 수 (기본: 1000)'),
+      },
+      async ({ lore, limit }) => {
+        try {
+          const chunks = await this.tools.loreManager.listChunks(lore, limit);
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(
+                  {
+                    lore,
+                    count: chunks.length,
+                    chunks,
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        } catch (error: any) {
+          return {
+            content: [{ type: 'text', text: JSON.stringify({ error: error.message }, null, 2) }],
+            isError: true,
+          };
+        }
       }
     );
 
@@ -668,7 +709,7 @@ export class MCPServer {
           'rest', 'rest_end', 'scribe', 'erase', 'revise',
           'memorize', 'find', 'get_topic',
           'chronicle', 'erase_lore', 'revise_lore',
-          'recall', 'recall_find',
+          'recall', 'recall_find', 'recall_list',
           'list_lores', 'delete_lore', 'lore_stats', 'update_lore',
           'stats', 'get_index', 'filter_guide', 'export', 'import',
           'write_scroll', 'read_scroll', 'modify_scroll', 'delete_scroll', 'get_scroll_index',

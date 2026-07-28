@@ -164,6 +164,7 @@ export interface RecallRequest {
   query: string;
   limit?: number;
   filter?: Record<string, any>;
+  threshold?: number;
 }
 
 export interface RecallFindRequest {
@@ -171,6 +172,8 @@ export interface RecallFindRequest {
   keywords: string[];
   limit?: number;
   filter?: Record<string, any>;
+  threshold?: number;
+  hybrid?: boolean;
 }
 
 // ============================================================================
@@ -207,12 +210,15 @@ export interface MemorizeRequest {
   query: string;
   limit?: number;
   filter?: Record<string, any>;
+  threshold?: number;
 }
 
 export interface FindRequest {
   keywords: string[];
   limit?: number;
   filter?: Record<string, any>;
+  threshold?: number;
+  hybrid?: boolean;
 }
 
 export interface SearchResult {

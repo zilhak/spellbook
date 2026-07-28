@@ -35,7 +35,8 @@ export class RecallTools {
         args.query,
         args.limit || 5,
         args.filter,
-        collectionName
+        collectionName,
+        args.threshold ?? 0.7
       );
 
       return {
@@ -93,12 +94,21 @@ export class RecallTools {
 
       const collectionName = this.loreManager.getCollectionName(args.lore);
 
-      const results = await this.searcher.keywordSearch(
-        args.keywords,
-        args.limit || 5,
-        args.filter,
-        collectionName
-      );
+      // 기본: 순수 필터 검색(벡터 threshold 게이팅 없음). hybrid=true 시 벡터확장.
+      const results = args.hybrid
+        ? await this.searcher.keywordSearch(
+            args.keywords,
+            args.limit || 5,
+            args.filter,
+            collectionName,
+            args.threshold ?? 0.6
+          )
+        : await this.searcher.keywordFilterSearch(
+            args.keywords,
+            args.limit || 5,
+            args.filter,
+            collectionName
+          );
 
       return {
         content: [

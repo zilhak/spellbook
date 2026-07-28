@@ -249,6 +249,35 @@ export class LoreManager {
   }
 
   /**
+   * Lore의 모든 청크 나열 (검색 없이 스크롤)
+   *
+   * recall/recall_find는 벡터 유사도 기반이라 임베딩이 없거나 인덱싱되지
+   * 않은 청크는 누락될 수 있다. 이 메서드는 컬렉션을 직접 스크롤하므로
+   * 저장된 모든 청크를 확실하게 반환한다. 반환되는 id는 revise_lore/erase_lore에
+   * 그대로 사용 가능하다.
+   */
+  async listChunks(
+    loreName: string,
+    limit: number = 1000
+  ): Promise<{ id: string; text: string; metadata: Record<string, any> }[]> {
+    this.validateLoreName(loreName);
+
+    const exists = await this.loreExists(loreName);
+    if (!exists) {
+      throw new Error(`Lore를 찾을 수 없습니다: "${loreName}"`);
+    }
+
+    const collectionName = this.getCollectionName(loreName);
+    const points = await this.qdrant.scrollCollection(collectionName, limit);
+
+    return points.map(p => ({
+      id: p.id,
+      text: p.payload?.text ?? '',
+      metadata: p.payload ?? {},
+    }));
+  }
+
+  /**
    * Lore별 MetadataService 인스턴스 반환 (캐싱)
    */
   getMetadataService(loreName: string): MetadataService {
