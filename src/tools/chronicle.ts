@@ -15,6 +15,28 @@ import type { QdrantService } from '../db/qdrant.js';
 import type { LoreManager } from '../core/lore-manager.js';
 import type { ChronicleRequest, ScribeResponse } from '../types/models.js';
 
+interface LoreBackupChunk {
+  id?: string;
+  text: string;
+  topic_id?: string;
+  topic_name?: string;
+  category?: string;
+  sub_category?: string;
+  keywords?: string[];
+  questions?: string[];
+  entities?: any[];
+  importance?: string;
+  source?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+interface LoreBackupData {
+  version?: string;
+  lore_description?: string;
+  chunks: LoreBackupChunk[];
+}
+
 export class ChronicleTools {
   constructor(
     private sessionManager: RestSessionManager,
@@ -220,6 +242,130 @@ export class ChronicleTools {
               status: 'error',
               message: error.message,
             }, null, 2),
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+
+  /**
+   * export_lore 도구 실행 (Lore 전체 JSON 백업)
+   *
+   * scroll 기반으로 임베딩 제외, id/text/metadata 포함 전체 청크를 덤프한다.
+   */
+  async exportLore(loreName: string): Promise<any> {
+    try {
+      this.loreManager.validateLoreName(loreName);
+
+      const exists = await this.loreManager.loreExists(loreName);
+      if (!exists) {
+        throw new Error(`Lore를 찾을 수 없습니다: "${loreName}"`);
+      }
+
+      const collectionName = this.loreManager.getCollectionName(loreName);
+      const points = await this.qdrant.scrollAll(collectionName);
+
+      const backup = {
+        version: '1.0.0',
+        exported_at: new Date().toISOString(),
+        lore: loreName,
+        total_chunks: points.length,
+        chunks: points.map(p => ({ id: p.id, ...p.payload })),
+      };
+
+      return {
+        content: [{ type: 'text', text: JSON.stringify(backup, null, 2) }],
+      };
+    } catch (error: any) {
+      return {
+        content: [{ type: 'text', text: JSON.stringify({ error: error.message }, null, 2) }],
+        isError: true,
+      };
+    }
+  }
+
+  /**
+   * import_lore 도구 실행 (Lore JSON 백업 복원)
+   *
+   * 1. Lore 존재 확인 (없으면 생성)
+   * 2. 각 청크 재임베딩 후 Lore 컬렉션에 저장
+   * 3. Lore 메타데이터 재구축
+   */
+  async importLore(loreName: string, data: LoreBackupData): Promise<any> {
+    try {
+      this.loreManager.validateLoreName(loreName);
+
+      if (!data || !Array.isArray(data.chunks)) {
+        throw new Error('유효하지 않은 백업 데이터: chunks 배열이 필요합니다.');
+      }
+
+      // Lore 존재 확인 (없으면 생성, 설명 있으면 갱신)
+      await this.loreManager.ensureLoreExists(loreName, data.lore_description);
+
+      const collectionName = this.loreManager.getCollectionName(loreName);
+      const metadataService = this.loreManager.getMetadataService(loreName);
+
+      const results = {
+        total: data.chunks.length,
+        success: 0,
+        failed: 0,
+        errors: [] as string[],
+      };
+
+      for (let i = 0; i < data.chunks.length; i++) {
+        const chunk = data.chunks[i];
+        try {
+          if (!chunk.text) {
+            throw new Error(`청크 ${i}: text 필드가 없습니다.`);
+          }
+
+          const id = chunk.id || uuidv4();
+          const embedding = await this.embedder.embed(chunk.text);
+
+          const payload = {
+            text: chunk.text,
+            topic_id: chunk.topic_id || 'imported',
+            topic_name: chunk.topic_name,
+            category: chunk.category || 'imported',
+            sub_category: chunk.sub_category,
+            keywords: chunk.keywords || [],
+            questions: chunk.questions || [],
+            entities: chunk.entities || [],
+            importance: chunk.importance || 'medium',
+            source: chunk.source || 'lore-import',
+            created_at: chunk.created_at || new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+
+          await this.qdrant.upsertChunkInCollection(collectionName, id, embedding, payload);
+          await metadataService.onChunkScribed(payload as any);
+
+          results.success++;
+        } catch (chunkError: any) {
+          results.failed++;
+          results.errors.push(chunkError.message);
+        }
+      }
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              status: results.failed === 0 ? 'success' : 'partial',
+              message: `Lore "${loreName}"에 ${results.success}/${results.total} 청크 가져오기 완료`,
+              ...results,
+            }, null, 2),
+          },
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({ status: 'error', message: error.message }, null, 2),
           },
         ],
         isError: true,

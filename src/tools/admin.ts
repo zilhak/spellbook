@@ -116,7 +116,8 @@ export class AdminTools {
    */
   async export(): Promise<any> {
     try {
-      const chunks = await this.qdrant.scroll(10000);
+      // 페이지네이션으로 전체 청크 수집 (절단 없음)
+      const chunks = await this.qdrant.scrollAll();
 
       const backup = {
         version: '1.0.0',

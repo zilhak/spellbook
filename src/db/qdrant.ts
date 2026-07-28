@@ -171,6 +171,36 @@ export class QdrantService {
     return result.points;
   }
 
+  /**
+   * 전체 스크롤 (페이지네이션으로 컬렉션의 모든 포인트 반환)
+   * collection 미지정 시 기본 컬렉션(Canon). next_page_offset를 따라가며
+   * 절단 없이 전부 수집한다.
+   */
+  async scrollAll(
+    collection?: string,
+    batchSize: number = 1000,
+    filter?: Record<string, any>
+  ): Promise<any[]> {
+    const target = collection || this.collectionName;
+    const all: any[] = [];
+    let offset: any = undefined;
+
+    while (true) {
+      const result = await this.client.scroll(target, {
+        limit: batchSize,
+        offset,
+        filter,
+        with_payload: true,
+        with_vector: false,
+      });
+      all.push(...result.points);
+      if (!result.next_page_offset) break;
+      offset = result.next_page_offset;
+    }
+
+    return all;
+  }
+
   // ============================================================================
   // 컬렉션 관리 메서드
   // ============================================================================

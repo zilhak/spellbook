@@ -72,7 +72,7 @@ export class MCPServer {
         instructions: [
           'Spellbook은 세 종류의 저장소를 제공합니다:',
           '- Canon: 기본 컬렉션. 범용 지식이 축적되는 메인 저장소 (scribe, memorize, find, erase, revise, get_topic, stats, get_index, export, import)',
-          '- Lore: 이름 붙은 서브 컬렉션. 용도별로 분리된 독립 저장소 (chronicle, recall, recall_find, recall_list, erase_lore, revise_lore, list_lores, delete_lore, lore_stats, update_lore)',
+          '- Lore: 이름 붙은 서브 컬렉션. 용도별로 분리된 독립 저장소 (chronicle, recall, recall_find, recall_list, erase_lore, revise_lore, export_lore, import_lore, list_lores, delete_lore, lore_stats, update_lore)',
           '- Scroll: 엄격한 문서 저장소. 독립적인 문서를 카테고리/라벨로 분류하여 보관 (write_scroll, read_scroll, modify_scroll, delete_scroll, get_scroll_index)',
           'Canon과 Lore는 완전히 격리된 API입니다. Canon API로 Lore 데이터에 접근할 수 없고, 그 반대도 마찬가지입니다.',
           'Scroll은 Canon/Lore와 별도의 SQLite 저장소로, 의미검색 없이 CRUD + 필터 조회만 지원합니다.',
@@ -338,6 +338,49 @@ export class MCPServer {
       },
       async ({ lore, chunk_id, new_text }) => {
         const result = await this.tools.chronicle.reviseLore(lore, chunk_id, new_text);
+        return result;
+      }
+    );
+
+    server.tool(
+      'export_lore',
+      'Lore 전체를 JSON으로 백업 내보내기 (임베딩 제외, id/text/metadata 포함)',
+      {
+        lore: z.string().describe('Lore 이름'),
+      },
+      async ({ lore }) => {
+        const result = await this.tools.chronicle.exportLore(lore);
+        return result;
+      }
+    );
+
+    server.tool(
+      'import_lore',
+      'Lore JSON 백업 가져오기 (재임베딩 후 복원, 없으면 생성)',
+      {
+        lore: z.string().describe('복원 대상 Lore 이름'),
+        data: z.object({
+          version: z.string().optional().describe('백업 버전 (선택)'),
+          lore_description: z.string().optional().describe('Lore 설명 (신규 생성 시)'),
+          chunks: z.array(z.object({
+            id: z.string().optional(),
+            text: z.string(),
+            topic_id: z.string().optional(),
+            topic_name: z.string().optional(),
+            category: z.string().optional(),
+            sub_category: z.string().optional(),
+            keywords: z.array(z.string()).optional(),
+            questions: z.array(z.string()).optional(),
+            entities: z.array(z.any()).optional(),
+            importance: z.string().optional(),
+            source: z.string().optional(),
+            created_at: z.string().optional(),
+            updated_at: z.string().optional(),
+          })).describe('가져올 청크 배열'),
+        }).describe('백업 데이터'),
+      },
+      async ({ lore, data }) => {
+        const result = await this.tools.chronicle.importLore(lore, data);
         return result;
       }
     );
@@ -708,7 +751,7 @@ export class MCPServer {
         tools: [
           'rest', 'rest_end', 'scribe', 'erase', 'revise',
           'memorize', 'find', 'get_topic',
-          'chronicle', 'erase_lore', 'revise_lore',
+          'chronicle', 'erase_lore', 'revise_lore', 'export_lore', 'import_lore',
           'recall', 'recall_find', 'recall_list',
           'list_lores', 'delete_lore', 'lore_stats', 'update_lore',
           'stats', 'get_index', 'filter_guide', 'export', 'import',
