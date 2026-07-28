@@ -71,8 +71,8 @@ export class MCPServer {
       {
         instructions: [
           'Spellbook은 세 종류의 저장소를 제공합니다:',
-          '- Canon: 기본 컬렉션. 범용 지식이 축적되는 메인 저장소 (scribe, memorize, find, erase, revise, get_topic, stats, get_index, export, import)',
-          '- Lore: 이름 붙은 서브 컬렉션. 용도별로 분리된 독립 저장소 (chronicle, recall, recall_find, recall_list, erase_lore, revise_lore, export_lore, import_lore, list_lores, delete_lore, lore_stats, update_lore)',
+          '- Canon: 기본 컬렉션. 범용 지식이 축적되는 메인 저장소 (scribe, memorize, find, erase, revise, get_topic, list_chunks, stats, get_index, export, import)',
+          '- Lore: 이름 붙은 서브 컬렉션. 용도별로 분리된 독립 저장소 (chronicle, recall, recall_find, recall_list, recall_topic, erase_lore, revise_lore, export_lore, import_lore, list_lores, delete_lore, lore_stats, update_lore)',
           '- Scroll: 엄격한 문서 저장소. 독립적인 문서를 카테고리/라벨로 분류하여 보관 (write_scroll, read_scroll, modify_scroll, delete_scroll, get_scroll_index)',
           'Canon과 Lore는 완전히 격리된 API입니다. Canon API로 Lore 데이터에 접근할 수 없고, 그 반대도 마찬가지입니다.',
           'Scroll은 Canon/Lore와 별도의 SQLite 저장소로, 의미검색 없이 CRUD + 필터 조회만 지원합니다.',
@@ -238,6 +238,18 @@ export class MCPServer {
         return {
           content: [{ type: 'text', text: getFilterGuide() }],
         };
+      }
+    );
+
+    server.tool(
+      'list_chunks',
+      'Canon의 모든 청크를 검색 없이 나열 (스크롤). memorize/find로 누락될 수 있는 청크까지 전부 반환. id는 revise/erase에 사용 가능.',
+      {
+        limit: z.number().optional().describe('반환할 최대 청크 수 (미지정 시 전체)'),
+      },
+      async ({ limit }) => {
+        const result = await this.tools.admin.listChunks(limit);
+        return result;
       }
     );
 
@@ -415,6 +427,19 @@ export class MCPServer {
       },
       async (args) => {
         const result = await this.tools.recall.recallFind(args);
+        return result;
+      }
+    );
+
+    server.tool(
+      'recall_topic',
+      'Lore에서 특정 토픽의 모든 청크 조회 (Canon get_topic의 Lore 대응)',
+      {
+        lore: z.string().describe('Lore 이름'),
+        topic_id: z.string().describe('토픽 ID'),
+      },
+      async ({ lore, topic_id }) => {
+        const result = await this.tools.recall.recallTopic(lore, topic_id);
         return result;
       }
     );
@@ -750,9 +775,9 @@ export class MCPServer {
         message: 'Use MCP protocol at /mcp endpoint',
         tools: [
           'rest', 'rest_end', 'scribe', 'erase', 'revise',
-          'memorize', 'find', 'get_topic',
+          'memorize', 'find', 'get_topic', 'list_chunks',
           'chronicle', 'erase_lore', 'revise_lore', 'export_lore', 'import_lore',
-          'recall', 'recall_find', 'recall_list',
+          'recall', 'recall_find', 'recall_list', 'recall_topic',
           'list_lores', 'delete_lore', 'lore_stats', 'update_lore',
           'stats', 'get_index', 'filter_guide', 'export', 'import',
           'write_scroll', 'read_scroll', 'modify_scroll', 'delete_scroll', 'get_scroll_index',

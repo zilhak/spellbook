@@ -150,6 +150,40 @@ export class AdminTools {
   }
 
   /**
+   * list_chunks 도구 실행 (Canon 전체 청크 나열)
+   *
+   * memorize/find는 벡터 유사도/필터 기반이라 누락될 수 있는 청크까지 전부 반환.
+   * id는 revise/erase에 그대로 사용 가능. limit 미지정 시 전체(페이지네이션).
+   */
+  async listChunks(limit?: number): Promise<any> {
+    try {
+      const points = limit
+        ? await this.qdrant.scroll(limit)
+        : await this.qdrant.scrollAll();
+
+      const chunks = points.map(p => ({
+        id: p.id,
+        text: p.payload?.text ?? '',
+        metadata: p.payload ?? {},
+      }));
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({ count: chunks.length, chunks }, null, 2),
+          },
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [{ type: 'text', text: JSON.stringify({ error: error.message }, null, 2) }],
+        isError: true,
+      };
+    }
+  }
+
+  /**
    * import 도구 실행 (JSON 백업 복원)
    *
    * 1. JSON 파싱 및 검증

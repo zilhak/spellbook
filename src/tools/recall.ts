@@ -150,4 +150,50 @@ export class RecallTools {
       };
     }
   }
+
+  /**
+   * recall_topic 도구 실행 (Lore에서 특정 토픽의 모든 청크 조회)
+   * Canon get_topic의 Lore 대응.
+   */
+  async recallTopic(loreName: string, topicId: string): Promise<any> {
+    try {
+      this.loreManager.validateLoreName(loreName);
+
+      const exists = await this.loreManager.loreExists(loreName);
+      if (!exists) {
+        throw new Error(`Lore를 찾을 수 없습니다: "${loreName}"`);
+      }
+
+      const collectionName = this.loreManager.getCollectionName(loreName);
+      const results = await this.searcher.getTopicChunks(topicId, collectionName);
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(
+              {
+                lore: loreName,
+                topic_id: topicId,
+                count: results.length,
+                chunks: results.map(r => r.chunk),
+              },
+              null,
+              2
+            ),
+          },
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({ error: error.message }, null, 2),
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
 }
