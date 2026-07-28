@@ -148,6 +148,89 @@ export class LoreManager {
   }
 
   /**
+   * Lore 이름 변경
+   *
+   * Qdrant는 컬렉션 rename을 지원하지 않으므로 신규 컬렉션 생성 → 포인트 이관
+   * (벡터 포함) → 구 컬렉션 삭제 방식으로 처리한다. 메인 메타데이터의 lore
+   * 엔트리도 재등록한다. created_at은 보존한다.
+   */
+  async renameLore(oldName: string, newName: string): Promise<void> {
+    this.validateLoreName(oldName);
+    this.validateLoreName(newName);
+
+    if (oldName === newName) {
+      throw new Error('새 이름이 기존 이름과 동일합니다.');
+    }
+
+    const oldEntry = await this.qdrant.getPointById(
+      this.mainMetadataCollection,
+      this.getLorePointId(oldName)
+    );
+    if (!oldEntry) {
+      throw new Error(`Lore를 찾을 수 없습니다: "${oldName}"`);
+    }
+    if (await this.loreExists(newName)) {
+      throw new Error(`이미 존재하는 Lore 이름입니다: "${newName}"`);
+    }
+
+    const oldCollection = this.getCollectionName(oldName);
+    const oldMetadata = this.getMetadataCollectionName(oldName);
+    const newCollection = this.getCollectionName(newName);
+    const newMetadata = this.getMetadataCollectionName(newName);
+    const now = new Date().toISOString();
+
+    // 신규 컬렉션 생성
+    await this.qdrant.createVectorCollection(newCollection, this.vectorSize);
+    await this.qdrant.initializePayloadCollection(newMetadata);
+
+    // 벡터 청크 이관 (벡터 포함)
+    const vectorPoints = await this.qdrant.scrollWithVectorsAll(oldCollection);
+    for (const p of vectorPoints) {
+      await this.qdrant.upsertChunkInCollection(newCollection, p.id, p.vector, p.payload);
+    }
+
+    // 메타데이터(토픽/카테고리) 이관 — 원본 문자열 ID 복원해 재등록
+    const metaPoints = await this.qdrant.scrollCollection(oldMetadata, 1000);
+    for (const mp of metaPoints) {
+      const pl = mp.payload;
+      let pointId: string | null = null;
+      if (pl?.type === 'topic') pointId = `topic:${pl.topic_id}`;
+      else if (pl?.type === 'category') pointId = `cat:${pl.name}`;
+      if (pointId) {
+        await this.qdrant.upsertPoint(newMetadata, pointId, pl);
+      }
+    }
+
+    // 메인 메타데이터에 신규 lore 엔트리 등록 (created_at 보존)
+    const oldLoreMeta = oldEntry.payload as LoreMetadata;
+    const newLoreMeta: LoreMetadata = {
+      type: 'lore',
+      name: newName,
+      description: oldLoreMeta.description || '',
+      collection_name: newCollection,
+      metadata_collection_name: newMetadata,
+      created_at: oldLoreMeta.created_at || now,
+      last_updated: now,
+    };
+    await this.qdrant.upsertPoint(this.mainMetadataCollection, this.getLorePointId(newName), newLoreMeta);
+
+    // 구 컬렉션/엔트리 제거
+    if (await this.qdrant.collectionExists(oldCollection)) {
+      await this.qdrant.deleteCollection(oldCollection);
+    }
+    if (await this.qdrant.collectionExists(oldMetadata)) {
+      await this.qdrant.deleteCollection(oldMetadata);
+    }
+    await this.qdrant.deletePoint(this.mainMetadataCollection, this.getLorePointId(oldName));
+
+    // 캐시 정리
+    this.metadataServices.delete(oldName);
+    this.metadataServices.delete(newName);
+
+    console.log(`📚 Lore 이름 변경 완료: "${oldName}" → "${newName}"`);
+  }
+
+  /**
    * Lore 삭제 (vector + metadata 컬렉션 + 메인 메타데이터 제거)
    */
   async deleteLore(loreName: string): Promise<void> {

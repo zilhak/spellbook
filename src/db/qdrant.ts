@@ -201,6 +201,32 @@ export class QdrantService {
     return all;
   }
 
+  /**
+   * 벡터 포함 전체 스크롤 (컬렉션 이관/복제용)
+   * 페이로드 + 벡터를 모두 반환한다.
+   */
+  async scrollWithVectorsAll(
+    collection: string,
+    batchSize: number = 500
+  ): Promise<any[]> {
+    const all: any[] = [];
+    let offset: any = undefined;
+
+    while (true) {
+      const result = await this.client.scroll(collection, {
+        limit: batchSize,
+        offset,
+        with_payload: true,
+        with_vector: true,
+      });
+      all.push(...result.points);
+      if (!result.next_page_offset) break;
+      offset = result.next_page_offset;
+    }
+
+    return all;
+  }
+
   // ============================================================================
   // 컬렉션 관리 메서드
   // ============================================================================

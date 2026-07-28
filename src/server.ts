@@ -74,7 +74,8 @@ export class MCPServer {
         instructions: [
           'Spellbook은 세 종류의 저장소를 제공합니다:',
           '- Canon: 기본 컬렉션. 범용 지식이 축적되는 메인 저장소 (scribe, memorize, find, erase, revise, get_topic, list_chunks, stats, get_index, export, import)',
-          '- Lore: 이름 붙은 서브 컬렉션. 용도별로 분리된 독립 저장소 (chronicle, recall, recall_find, recall_list, recall_topic, erase_lore, revise_lore, export_lore, import_lore, list_lores, delete_lore, lore_stats, update_lore)',
+          '- Lore: 이름 붙은 서브 컬렉션. 용도별로 분리된 독립 저장소 (chronicle, recall, recall_find, recall_list, recall_topic, erase_lore, revise_lore, export_lore, import_lore, list_lores, delete_lore, lore_stats, update_lore, rename_lore)',
+          '- 유지보수(Canon/Lore 공용): reindex, health, edit_metadata, batch_erase, batch_edit_metadata, move_chunk, copy_chunk (lore 인자 미지정 시 Canon)',
           '- Scroll: 엄격한 문서 저장소. 독립적인 문서를 카테고리/라벨로 분류하여 보관 (write_scroll, read_scroll, modify_scroll, delete_scroll, get_scroll_index)',
           'Canon과 Lore는 완전히 격리된 API입니다. Canon API로 Lore 데이터에 접근할 수 없고, 그 반대도 마찬가지입니다.',
           'Scroll은 Canon/Lore와 별도의 SQLite 저장소로, 의미검색 없이 CRUD + 필터 조회만 지원합니다.',
@@ -613,6 +614,40 @@ export class MCPServer {
       }
     );
 
+    server.tool(
+      'rename_lore',
+      'Lore 이름 변경 (신규 컬렉션 생성 → 벡터 포함 이관 → 구 컬렉션 삭제). 데이터/설명/생성일 보존.',
+      {
+        lore: z.string().describe('기존 Lore 이름'),
+        new_name: z.string().describe('새 Lore 이름'),
+      },
+      async ({ lore, new_name }) => {
+        try {
+          await this.tools.loreManager.renameLore(lore, new_name);
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(
+                  {
+                    status: 'success',
+                    message: `Lore "${lore}" → "${new_name}" 이름 변경 완료`,
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        } catch (error: any) {
+          return {
+            content: [{ type: 'text', text: JSON.stringify({ error: error.message }, null, 2) }],
+            isError: true,
+          };
+        }
+      }
+    );
+
     // === 유지보수/운영 도구 (Canon/Lore 공용) ===
     server.tool(
       'reindex',
@@ -633,6 +668,82 @@ export class MCPServer {
       },
       async ({ lore }) => {
         return await this.tools.maintenance.health(lore);
+      }
+    );
+
+    const metadataPatchSchema = {
+      topic_id: z.string().optional().describe('토픽 ID'),
+      topic_name: z.string().optional().describe('토픽 이름'),
+      category: z.string().optional().describe('카테고리'),
+      sub_category: z.string().optional().describe('서브카테고리'),
+      keywords: z.array(z.string()).optional().describe('키워드 목록 (전체 교체)'),
+      questions: z.array(z.string()).optional().describe('질문 목록 (전체 교체)'),
+      entities: z.array(z.any()).optional().describe('엔티티 목록 (전체 교체)'),
+      importance: z.enum(['high', 'medium', 'low']).optional().describe('중요도'),
+      source: z.string().optional().describe('출처'),
+    };
+
+    server.tool(
+      'edit_metadata',
+      '청크의 text는 그대로 두고 메타데이터(keywords/category/importance 등)만 수정. 카운트 정합성 자동 갱신. lore 미지정 시 Canon.',
+      {
+        chunk_id: z.string().describe('수정할 청크 ID'),
+        patch: z.object(metadataPatchSchema).describe('수정할 메타데이터 필드 (전달된 필드만 반영)'),
+        lore: z.string().optional().describe('Lore 이름 (미지정 시 Canon)'),
+      },
+      async ({ chunk_id, patch, lore }) => {
+        return await this.tools.maintenance.editMetadata(chunk_id, patch, lore);
+      }
+    );
+
+    server.tool(
+      'batch_erase',
+      '필터에 매칭되는 청크를 일괄 삭제 (안전을 위해 빈 필터 거부). lore 미지정 시 Canon.',
+      {
+        filter: z.record(z.string(), z.any()).describe('삭제 대상 필터 (예: { category: "banner" })'),
+        lore: z.string().optional().describe('Lore 이름 (미지정 시 Canon)'),
+      },
+      async ({ filter, lore }) => {
+        return await this.tools.maintenance.batchErase(filter, lore);
+      }
+    );
+
+    server.tool(
+      'batch_edit_metadata',
+      '필터에 매칭되는 청크의 메타데이터를 일괄 패치 (예: 배너 8개의 category 일괄 교정). 빈 필터 거부. lore 미지정 시 Canon.',
+      {
+        filter: z.record(z.string(), z.any()).describe('대상 필터'),
+        patch: z.object(metadataPatchSchema).describe('일괄 적용할 메타데이터 필드'),
+        lore: z.string().optional().describe('Lore 이름 (미지정 시 Canon)'),
+      },
+      async ({ filter, patch, lore }) => {
+        return await this.tools.maintenance.batchEditMetadata(filter, patch, lore);
+      }
+    );
+
+    server.tool(
+      'move_chunk',
+      '청크를 다른 저장소로 이동 (출발지에서 제거, 재임베딩). from_lore/to_lore 미지정 시 Canon.',
+      {
+        chunk_id: z.string().describe('이동할 청크 ID'),
+        from_lore: z.string().optional().describe('출발 Lore (미지정 시 Canon)'),
+        to_lore: z.string().optional().describe('목적 Lore (미지정 시 Canon)'),
+      },
+      async ({ chunk_id, from_lore, to_lore }) => {
+        return await this.tools.maintenance.moveChunk(chunk_id, from_lore, to_lore);
+      }
+    );
+
+    server.tool(
+      'copy_chunk',
+      '청크를 다른 저장소로 복사 (출발지 유지, 재임베딩). from_lore/to_lore 미지정 시 Canon.',
+      {
+        chunk_id: z.string().describe('복사할 청크 ID'),
+        from_lore: z.string().optional().describe('출발 Lore (미지정 시 Canon)'),
+        to_lore: z.string().optional().describe('목적 Lore (미지정 시 Canon)'),
+      },
+      async ({ chunk_id, from_lore, to_lore }) => {
+        return await this.tools.maintenance.copyChunk(chunk_id, from_lore, to_lore);
       }
     );
 
@@ -803,9 +914,9 @@ export class MCPServer {
           'memorize', 'find', 'get_topic', 'list_chunks',
           'chronicle', 'erase_lore', 'revise_lore', 'export_lore', 'import_lore',
           'recall', 'recall_find', 'recall_list', 'recall_topic',
-          'list_lores', 'delete_lore', 'lore_stats', 'update_lore',
+          'list_lores', 'delete_lore', 'lore_stats', 'update_lore', 'rename_lore',
           'stats', 'get_index', 'filter_guide', 'export', 'import',
-          'reindex', 'health',
+          'reindex', 'health', 'edit_metadata', 'batch_erase', 'batch_edit_metadata', 'move_chunk', 'copy_chunk',
           'write_scroll', 'read_scroll', 'modify_scroll', 'delete_scroll', 'get_scroll_index',
         ],
       });

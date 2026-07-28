@@ -11,12 +11,27 @@
  * target 관례: lore 미지정 시 Canon, 지정 시 해당 Lore.
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import type { QdrantService } from '../db/qdrant.js';
 import type { EmbeddingService } from '../core/embedder.js';
 import type { LoreManager } from '../core/lore-manager.js';
 import type { MetadataService } from '../core/metadata-service.js';
 import type { ChunkMetadata } from '../types/models.js';
+import { convertToQdrantFilter } from '../core/filter-utils.js';
+
+/**
+ * text를 건드리지 않고 수정 가능한 메타데이터 필드
+ */
+export interface MetadataPatch {
+  topic_id?: string;
+  topic_name?: string;
+  category?: string;
+  sub_category?: string;
+  keywords?: string[];
+  questions?: string[];
+  entities?: any[];
+  importance?: 'high' | 'medium' | 'low';
+  source?: string;
+}
 
 /**
  * Canon/Lore를 동일 인터페이스로 다루기 위한 타겟 핸들
@@ -192,5 +207,255 @@ export class MaintenanceTools {
         isError: true,
       };
     }
+  }
+
+  /**
+   * 플랫 payload → ChunkMetadata 추출
+   */
+  private payloadToMeta(payload: Record<string, any>): ChunkMetadata {
+    return {
+      topic_id: payload.topic_id,
+      topic_name: payload.topic_name,
+      category: payload.category,
+      sub_category: payload.sub_category,
+      keywords: payload.keywords || [],
+      questions: payload.questions || [],
+      entities: payload.entities || [],
+      importance: payload.importance || 'medium',
+      source: payload.source,
+      created_at: payload.created_at,
+      updated_at: payload.updated_at,
+    };
+  }
+
+  /**
+   * 단일 청크에 메타데이터 패치 적용 (text 유지 + 카운트 정합성 갱신)
+   * text는 그대로이므로 재임베딩해 벡터를 유지한 채 payload만 교체한다.
+   */
+  private async applyPatch(target: TargetOps, point: any, patch: MetadataPatch): Promise<void> {
+    const oldPayload = point.payload as Record<string, any>;
+    const oldMeta = this.payloadToMeta(oldPayload);
+
+    const now = new Date().toISOString();
+    const newPayload: Record<string, any> = { ...oldPayload };
+    for (const [k, v] of Object.entries(patch)) {
+      if (v !== undefined) newPayload[k] = v;
+    }
+    newPayload.updated_at = now;
+
+    const newMeta = this.payloadToMeta(newPayload);
+
+    // text 불변 → 재임베딩(embedder 캐시로 저렴), 벡터 유지
+    const embedding = await this.embedder.embed(oldPayload.text);
+    await target.upsert(point.id, embedding, newPayload);
+
+    // 카테고리/토픽 카운트 정합성: 기존 감소 후 신규 증가 (변경 없으면 net-neutral)
+    await target.metadataService.onChunkErased(oldMeta);
+    await target.metadataService.onChunkScribed(newMeta);
+  }
+
+  /**
+   * edit_metadata 도구: 단일 청크의 메타데이터만 수정 (text 불변).
+   * revise는 text만 바꾸므로 잘못된 keywords/category 수정 수단이 부재한 것을 보완.
+   */
+  async editMetadata(chunkId: string, patch: MetadataPatch, lore?: string): Promise<any> {
+    try {
+      const target = await this.resolveTarget(lore);
+      const point = await target.getById(chunkId);
+      if (!point) {
+        throw new Error(`${target.label}에서 청크를 찾을 수 없습니다: ${chunkId}`);
+      }
+
+      await this.applyPatch(target, point, patch);
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              status: 'success',
+              message: `${target.label} 청크 메타데이터 수정 완료: ${chunkId}`,
+            }, null, 2),
+          },
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [{ type: 'text', text: JSON.stringify({ status: 'error', message: error.message }, null, 2) }],
+        isError: true,
+      };
+    }
+  }
+
+  /**
+   * batch_erase 도구: 필터에 매칭되는 청크를 일괄 삭제.
+   * 안전을 위해 빈 필터는 거부한다.
+   */
+  async batchErase(filter: Record<string, any>, lore?: string): Promise<any> {
+    try {
+      if (!filter || Object.keys(filter).length === 0) {
+        throw new Error('안전을 위해 batch_erase에는 비어있지 않은 필터가 필요합니다.');
+      }
+      const target = await this.resolveTarget(lore);
+      const qdrantFilter = convertToQdrantFilter(filter);
+      const points = await target.scrollAll(qdrantFilter);
+
+      const result = { total: points.length, success: 0, failed: 0, errors: [] as string[] };
+      for (const p of points) {
+        try {
+          await target.del(p.id);
+          await target.metadataService.onChunkErased(this.payloadToMeta(p.payload));
+          result.success++;
+        } catch (e: any) {
+          result.failed++;
+          result.errors.push(`${p.id}: ${e.message}`);
+        }
+      }
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              status: result.failed === 0 ? 'success' : 'partial',
+              message: `${target.label}에서 ${result.success}/${result.total} 청크 삭제`,
+              ...result,
+            }, null, 2),
+          },
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [{ type: 'text', text: JSON.stringify({ status: 'error', message: error.message }, null, 2) }],
+        isError: true,
+      };
+    }
+  }
+
+  /**
+   * batch_edit_metadata 도구: 필터에 매칭되는 청크의 메타데이터를 일괄 패치.
+   * (예: 잘못 분류된 배너 청크 8개의 category를 한 번에 교정)
+   * 안전을 위해 빈 필터는 거부한다.
+   */
+  async batchEditMetadata(filter: Record<string, any>, patch: MetadataPatch, lore?: string): Promise<any> {
+    try {
+      if (!filter || Object.keys(filter).length === 0) {
+        throw new Error('안전을 위해 batch_edit_metadata에는 비어있지 않은 필터가 필요합니다.');
+      }
+      const target = await this.resolveTarget(lore);
+      const qdrantFilter = convertToQdrantFilter(filter);
+      const points = await target.scrollAll(qdrantFilter);
+
+      const result = { total: points.length, success: 0, failed: 0, errors: [] as string[] };
+      for (const p of points) {
+        try {
+          await this.applyPatch(target, p, patch);
+          result.success++;
+        } catch (e: any) {
+          result.failed++;
+          result.errors.push(`${p.id}: ${e.message}`);
+        }
+      }
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              status: result.failed === 0 ? 'success' : 'partial',
+              message: `${target.label}에서 ${result.success}/${result.total} 청크 메타데이터 수정`,
+              ...result,
+            }, null, 2),
+          },
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [{ type: 'text', text: JSON.stringify({ status: 'error', message: error.message }, null, 2) }],
+        isError: true,
+      };
+    }
+  }
+
+  /**
+   * move_chunk / copy_chunk 공통 로직
+   * Canon↔Lore, Lore간 청크 이관/복제. 목적지에서 text 재임베딩.
+   */
+  private async transfer(
+    chunkId: string,
+    fromLore: string | undefined,
+    toLore: string | undefined,
+    mode: 'move' | 'copy'
+  ): Promise<any> {
+    try {
+      const from = await this.resolveTarget(fromLore);
+
+      // 목적지 Lore는 없으면 자동 생성 (chronicle과 동일한 ensure 시맨틱)
+      if (toLore) {
+        this.loreManager.validateLoreName(toLore);
+        await this.loreManager.ensureLoreExists(toLore);
+      }
+      const to = await this.resolveTarget(toLore);
+
+      if (from.collection === to.collection) {
+        throw new Error('출발지와 목적지가 동일합니다.');
+      }
+
+      const existing = await from.getById(chunkId);
+      if (!existing) {
+        throw new Error(`${from.label}에서 청크를 찾을 수 없습니다: ${chunkId}`);
+      }
+
+      const payload = existing.payload as Record<string, any>;
+      if (!payload.text) {
+        throw new Error(`청크 ${chunkId}: text 필드가 없어 이관 불가`);
+      }
+
+      const now = new Date().toISOString();
+      const newPayload = { ...payload, updated_at: now };
+
+      // 목적지 저장 (재임베딩)
+      const embedding = await this.embedder.embed(payload.text);
+      await to.upsert(chunkId, embedding, newPayload);
+      await to.metadataService.onChunkScribed(this.payloadToMeta(newPayload));
+
+      // move면 출발지 삭제
+      if (mode === 'move') {
+        await from.del(chunkId);
+        await from.metadataService.onChunkErased(this.payloadToMeta(payload));
+      }
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              status: 'success',
+              message: `${mode === 'move' ? '이동' : '복사'} 완료: ${from.label} → ${to.label} (${chunkId})`,
+              chunk_id: chunkId,
+            }, null, 2),
+          },
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [{ type: 'text', text: JSON.stringify({ status: 'error', message: error.message }, null, 2) }],
+        isError: true,
+      };
+    }
+  }
+
+  /**
+   * move_chunk 도구: 청크를 다른 저장소로 이동 (출발지에서 제거)
+   */
+  async moveChunk(chunkId: string, fromLore?: string, toLore?: string): Promise<any> {
+    return this.transfer(chunkId, fromLore, toLore, 'move');
+  }
+
+  /**
+   * copy_chunk 도구: 청크를 다른 저장소로 복사 (출발지 유지)
+   */
+  async copyChunk(chunkId: string, fromLore?: string, toLore?: string): Promise<any> {
+    return this.transfer(chunkId, fromLore, toLore, 'copy');
   }
 }
