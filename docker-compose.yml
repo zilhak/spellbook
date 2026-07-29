@@ -13,6 +13,7 @@ services:
       - EMBEDDING_DIMENSIONS=${EMBEDDING_DIMENSIONS:-768}
       - EMBEDDING_CONTEXT_LENGTH=${EMBEDDING_CONTEXT_LENGTH:-8192}
       - SQLITE_DB_PATH=${SQLITE_DB_PATH:-/app/data/sqlite/data.db}
+      - SPELLBOOK_DEBUG_EMBED=${SPELLBOOK_DEBUG_EMBED:-0}
     volumes:
       - ${SQLITE_DATA_PATH:-./data/sqlite}:/app/data/sqlite
     depends_on:
