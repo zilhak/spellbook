@@ -89,6 +89,22 @@ export class ChronicleTools {
         chunk.metadata.source = args.source;
       }
 
+      // 2-1. 청크 크기 검사 (상한 초과 시 자르지 않고 거부)
+      const size = this.embedder.checkChunkSize(chunk.text);
+      if (size.tooLarge) {
+        const response: ScribeResponse = {
+          status: 'error',
+          message:
+            `청크가 임베딩 토큰 상한(약 ${size.maxTokens} 토큰)을 초과합니다(추정 ${size.estimatedTokens} 토큰). ` +
+            `잘라서 저장하면 앞부분만 의미검색에 반영되므로 저장을 거부합니다. ` +
+            `청크를 ${size.suggestedSplits}개 이상으로 의미 단위 분할해 다시 저장하세요.`,
+        };
+        return {
+          content: [{ type: 'text', text: JSON.stringify(response, null, 2) }],
+          isError: true,
+        };
+      }
+
       // 3. 해당 Lore 내 중복 감지
       const duplicates = await this.searcher.detectDuplicates(chunk.text, 0.95, collectionName);
       if (duplicates && duplicates.length > 0) {
@@ -102,8 +118,8 @@ export class ChronicleTools {
         };
       }
 
-      // 4. 임베딩 생성
-      const embedding = await this.embedder.embed(chunk.text);
+      // 4. 임베딩 생성 (상한 초과 시 ChunkTooLargeError 로 거부 — 위 조기검사의 backstop)
+      const embedding = await this.embedder.embedForStorage(chunk.text);
 
       // 5. Lore 컬렉션에 저장
       await this.qdrant.upsertChunkInCollection(collectionName, chunk.id, embedding, {
@@ -210,8 +226,8 @@ export class ChronicleTools {
         throw new Error(`Lore "${loreName}"에서 청크를 찾을 수 없습니다: ${chunkId}`);
       }
 
-      // 새 임베딩 생성
-      const embedding = await this.embedder.embed(newText);
+      // 새 임베딩 생성 (상한 초과 시 ChunkTooLargeError 로 거부)
+      const embedding = await this.embedder.embedForStorage(newText);
 
       // 업데이트
       const payload = {
@@ -321,7 +337,7 @@ export class ChronicleTools {
           }
 
           const id = chunk.id || uuidv4();
-          const embedding = await this.embedder.embed(chunk.text);
+          const embedding = await this.embedder.embedForStorage(chunk.text);
 
           const payload = {
             text: chunk.text,

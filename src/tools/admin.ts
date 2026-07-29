@@ -217,8 +217,8 @@ export class AdminTools {
           // ID 생성 (없으면)
           const id = chunk.id || `imported-${Date.now()}-${i}`;
 
-          // 임베딩 생성
-          const embedding = await this.embedder.embed(chunk.text);
+          // 임베딩 생성 (상한 초과 시 ChunkTooLargeError 로 거부)
+          const embedding = await this.embedder.embedForStorage(chunk.text);
 
           // payload 구성
           const payload = {

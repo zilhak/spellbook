@@ -131,7 +131,7 @@ export class RestSessionManager {
         ],
         ideal_chunk_size: {
           min_tokens: 100,
-          max_tokens: 512,
+          max_tokens: 420,
         },
         examples: [],
       };
@@ -142,7 +142,7 @@ export class RestSessionManager {
       principles: [chunkingPrinciples.chunk.text],
       ideal_chunk_size: {
         min_tokens: 100,
-        max_tokens: 512,
+        max_tokens: 420,
       },
       examples: [],
     };

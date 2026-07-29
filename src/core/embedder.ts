@@ -45,6 +45,31 @@ const TOKENS_PER_OTHER_CHAR = 0.5; // 실측 약 0.25
 const CJK_PATTERN =
   /[ᄀ-ᇿ　-鿿가-힯豈-﫿＀-￯]/;
 
+/**
+ * 저장하려는 청크가 임베딩 토큰 상한을 넘을 때 던지는 오류.
+ *
+ * 잘라서 저장하면 벡터가 앞부분만 반영해 의미검색 사각지대가 생기므로,
+ * 저장 경로에서는 자르지 않고 이 오류로 거부하고 분할을 요구한다.
+ */
+export class ChunkTooLargeError extends Error {
+  readonly estimatedTokens: number;
+  readonly maxTokens: number;
+  readonly suggestedSplits: number;
+
+  constructor(estimatedTokens: number, maxTokens: number) {
+    const splits = Math.max(2, Math.ceil(estimatedTokens / maxTokens));
+    super(
+      `청크가 임베딩 토큰 상한(약 ${maxTokens} 토큰)을 초과합니다(추정 ${estimatedTokens} 토큰). ` +
+      `잘라서 저장하면 앞부분만 의미검색에 반영되므로 저장을 거부합니다. ` +
+      `청크를 ${splits}개 이상으로 의미 단위 분할해 다시 저장하세요.`
+    );
+    this.name = 'ChunkTooLargeError';
+    this.estimatedTokens = estimatedTokens;
+    this.maxTokens = maxTokens;
+    this.suggestedSplits = splits;
+  }
+}
+
 export class EmbeddingService {
   private config: EmbeddingConfig;
   private cache: Map<string, number[]>;
@@ -81,6 +106,41 @@ export class EmbeddingService {
     this.cache.set(text, normalized);
 
     return normalized;
+  }
+
+  /**
+   * 저장용 청크 크기 검사.
+   * 임베딩 토큰 상한을 넘으면 tooLarge=true. 저장 도구는 이때 저장을 거부해야 한다.
+   */
+  checkChunkSize(text: string): {
+    tooLarge: boolean;
+    estimatedTokens: number;
+    maxTokens: number;
+    suggestedSplits: number;
+  } {
+    const estimatedTokens = Math.round(this.estimateTokens(text));
+    const tooLarge = estimatedTokens > MAX_INPUT_TOKENS;
+    return {
+      tooLarge,
+      estimatedTokens,
+      maxTokens: MAX_INPUT_TOKENS,
+      suggestedSplits: tooLarge
+        ? Math.max(2, Math.ceil(estimatedTokens / MAX_INPUT_TOKENS))
+        : 1,
+    };
+  }
+
+  /**
+   * 저장용 임베딩 생성.
+   * embed() 와 달리 토큰 상한 초과 시 잘라내지 않고 ChunkTooLargeError 로 거부한다.
+   * (질의/재색인은 관대한 embed() 를 쓰고, 신규 저장 경로만 이 메서드를 쓴다.)
+   */
+  async embedForStorage(text: string): Promise<number[]> {
+    const size = this.checkChunkSize(text);
+    if (size.tooLarge) {
+      throw new ChunkTooLargeError(size.estimatedTokens, size.maxTokens);
+    }
+    return this.embed(text);
   }
 
   /**
