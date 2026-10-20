@@ -6,7 +6,7 @@
  * - health: total_count vs vector_count 불일치, 고아 메타데이터 진단
  * - batch_erase / batch_edit_metadata: 필터 기준 일괄 처리
  * - edit_metadata: text는 두고 메타데이터만 수정
- * - move_chunk / copy_chunk: Canon↔Lore, Lore간 청크 이동/복사 (재임베딩)
+ * - move_chunk / copy_chunk: Canon↔Lore, Lore간 청크 이동/복사 (기존 벡터 그대로 이관)
  *
  * target 관례: lore 미지정 시 Canon, 지정 시 해당 Lore.
  */
@@ -42,8 +42,9 @@ interface TargetOps {
   metadataCollection: string;
   metadataService: MetadataService;
   scrollAll: (filter?: Record<string, any>) => Promise<any[]>;
-  getById: (id: string) => Promise<any | null>;
+  getById: (id: string, withVector?: boolean) => Promise<any | null>;
   upsert: (id: string, vector: number[], payload: Record<string, any>) => Promise<void>;
+  setPayload: (id: string | number, payload: Record<string, any>) => Promise<void>;
   del: (id: string) => Promise<void>;
   stats: () => Promise<{ total_count: number; vector_count: number }>;
 }
@@ -74,8 +75,9 @@ export class MaintenanceTools {
         metadataCollection: this.loreManager.getMetadataCollectionName(lore),
         metadataService: this.loreManager.getMetadataService(lore),
         scrollAll: (filter) => this.qdrant.scrollAll(collection, 1000, filter),
-        getById: (id) => this.qdrant.getByIdInCollection(collection, id),
+        getById: (id, withVector) => this.qdrant.getByIdInCollection(collection, id, withVector),
         upsert: (id, vector, payload) => this.qdrant.upsertChunkInCollection(collection, id, vector, payload),
+        setPayload: (id, payload) => this.qdrant.overwritePayload(collection, id, payload),
         del: (id) => this.qdrant.deleteChunkInCollection(collection, id),
         stats: () => this.qdrant.getCollectionStats(collection),
       };
@@ -86,8 +88,9 @@ export class MaintenanceTools {
       metadataCollection: this.canonMetadataCollection,
       metadataService: this.metadataService,
       scrollAll: (filter) => this.qdrant.scrollAll(undefined, 1000, filter),
-      getById: (id) => this.qdrant.getById(id),
+      getById: (id, withVector) => this.qdrant.getById(id, withVector),
       upsert: (id, vector, payload) => this.qdrant.upsertChunk(id, vector, payload),
+      setPayload: (id, payload) => this.qdrant.overwritePayload(undefined, id, payload),
       del: (id) => this.qdrant.deleteChunk(id),
       stats: () => this.qdrant.getStats(),
     };
@@ -110,7 +113,7 @@ export class MaintenanceTools {
           if (!text) {
             throw new Error(`청크 ${p.id}: text 필드가 없어 재임베딩 불가`);
           }
-          const embedding = await this.embedder.embed(text, { allowShrink: false });
+          const embedding = await this.embedder.embedForStorage(text);
           await target.upsert(p.id, embedding, p.payload);
           result.success++;
         } catch (e: any) {
@@ -230,7 +233,7 @@ export class MaintenanceTools {
 
   /**
    * 단일 청크에 메타데이터 패치 적용 (text 유지 + 카운트 정합성 갱신)
-   * text는 그대로이므로 재임베딩해 벡터를 유지한 채 payload만 교체한다.
+   * text는 그대로이므로 재임베딩하지 않고 기존 벡터를 둔 채 payload만 교체한다.
    */
   private async applyPatch(target: TargetOps, point: any, patch: MetadataPatch): Promise<void> {
     const oldPayload = point.payload as Record<string, any>;
@@ -245,9 +248,8 @@ export class MaintenanceTools {
 
     const newMeta = this.payloadToMeta(newPayload);
 
-    // text 불변 → 재임베딩(embedder 캐시로 저렴), 벡터 유지
-    const embedding = await this.embedder.embed(oldPayload.text, { allowShrink: false });
-    await target.upsert(point.id, embedding, newPayload);
+    // text 불변 → 벡터 유지, payload만 교체
+    await target.setPayload(point.id, newPayload);
 
     // 카테고리/토픽 카운트 정합성: 기존 감소 후 신규 증가 (변경 없으면 net-neutral)
     await target.metadataService.onChunkErased(oldMeta);
@@ -379,7 +381,8 @@ export class MaintenanceTools {
 
   /**
    * move_chunk / copy_chunk 공통 로직
-   * Canon↔Lore, Lore간 청크 이관/복제. 목적지에서 text 재임베딩.
+   * Canon↔Lore, Lore간 청크 이관/복제. 모든 저장소가 같은 임베딩 모델을 쓰므로
+   * 재임베딩하지 않고 기존 벡터를 그대로 옮긴다.
    */
   private async transfer(
     chunkId: string,
@@ -401,7 +404,7 @@ export class MaintenanceTools {
         throw new Error('출발지와 목적지가 동일합니다.');
       }
 
-      const existing = await from.getById(chunkId);
+      const existing = await from.getById(chunkId, true);
       if (!existing) {
         throw new Error(`${from.label}에서 청크를 찾을 수 없습니다: ${chunkId}`);
       }
@@ -414,9 +417,12 @@ export class MaintenanceTools {
       const now = new Date().toISOString();
       const newPayload = { ...payload, updated_at: now };
 
-      // 목적지 저장 (재임베딩)
-      const embedding = await this.embedder.embed(payload.text, { allowShrink: false });
-      await to.upsert(chunkId, embedding, newPayload);
+      if (!Array.isArray(existing.vector)) {
+        throw new Error(`청크 ${chunkId}: 벡터가 없어 이관 불가 (reindex 필요)`);
+      }
+
+      // 목적지 저장 (기존 벡터 그대로)
+      await to.upsert(chunkId, existing.vector, newPayload);
       await to.metadataService.onChunkScribed(this.payloadToMeta(newPayload));
 
       // move면 출발지 삭제

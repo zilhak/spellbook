@@ -112,11 +112,11 @@ export class QdrantService {
   /**
    * ID로 청크 조회
    */
-  async getById(id: string): Promise<any | null> {
+  async getById(id: string, withVector: boolean = false): Promise<any | null> {
     const result = await this.client.retrieve(this.collectionName, {
       ids: [id],
       with_payload: true,
-      with_vector: false,
+      with_vector: withVector,
     });
 
     return result.length > 0 ? result[0] : null;
@@ -333,13 +333,32 @@ export class QdrantService {
   /**
    * 지정 컬렉션에서 ID로 조회
    */
-  async getByIdInCollection(collection: string, id: string): Promise<any | null> {
+  async getByIdInCollection(
+    collection: string,
+    id: string,
+    withVector: boolean = false
+  ): Promise<any | null> {
     const result = await this.client.retrieve(collection, {
       ids: [id],
       with_payload: true,
-      with_vector: false,
+      with_vector: withVector,
     });
     return result.length > 0 ? result[0] : null;
+  }
+
+  /**
+   * 벡터는 그대로 두고 payload 전체를 교체 (collection 미지정 시 Canon)
+   */
+  async overwritePayload(
+    collection: string | undefined,
+    id: string | number,
+    payload: Record<string, any>
+  ): Promise<void> {
+    await this.client.overwritePayload(collection || this.collectionName, {
+      wait: true,
+      points: [id],
+      payload,
+    });
   }
 
   /**

@@ -88,14 +88,9 @@ export class EmbeddingService {
   }
 
   /**
-   * 단일 텍스트 임베딩 생성
-   * allowShrink=false 면 5xx 재시도에서 입력을 줄이지 않고 실패한다
-   * (기존 청크 재임베딩처럼 결과 벡터를 DB에 저장하는 경로용).
+   * 단일 텍스트 임베딩 생성 (질의·중복검사용 — 결과 벡터를 저장하는 경로는 embedForStorage)
    */
-  async embed(
-    text: string,
-    options: { allowShrink: boolean } = { allowShrink: true }
-  ): Promise<number[]> {
+  async embed(text: string): Promise<number[]> {
     // 캐시 확인
     const cached = this.cache.get(text);
     if (cached) {
@@ -105,7 +100,7 @@ export class EmbeddingService {
     // Ollama API 호출 (러너 크래시를 피하기 위해 토큰 상한으로 잘라서 전송)
     const { embedding, shrunk } = await this.callOllama(
       this.truncateForEmbedding(text),
-      options
+      { allowShrink: true }
     );
 
     // 벡터 정규화 (코사인 유사도 최적화)
@@ -146,7 +141,8 @@ export class EmbeddingService {
    * 저장용 임베딩 생성.
    * embed() 와 달리 토큰 상한 초과 시 잘라내지 않고 ChunkTooLargeError 로 거부하며,
    * 5xx 재시도에서도 입력을 줄이지 않는다(실패하면 오류). 벡터는 항상 원문 전체 기준이다.
-   * (질의/재색인은 관대한 embed() 를 쓰고, 신규 저장 경로만 이 메서드를 쓴다.)
+   * (질의·중복검사는 관대한 embed() 를 쓰고, 신규 저장·재임베딩·시드 등
+   *  벡터를 DB에 저장하는 경로는 모두 이 메서드를 쓴다.)
    */
   async embedForStorage(text: string): Promise<number[]> {
     const size = this.checkChunkSize(text);
@@ -190,8 +186,8 @@ export class EmbeddingService {
   }
 
   /**
-   * MAX_INPUT_TOKENS 를 넘는 텍스트를 잘라낸다.
-   * 저장되는 원문(payload.text)은 그대로이고, 벡터만 앞부분 기준으로 생성된다.
+   * MAX_INPUT_TOKENS 를 넘는 텍스트를 잘라낸다 (질의용 embed() 전용).
+   * 저장 경로는 embedForStorage() 가 상한 초과를 거부하므로 여기를 거치지 않는다.
    */
   private truncateForEmbedding(text: string): string {
     if (this.estimateTokens(text) <= MAX_INPUT_TOKENS) {
