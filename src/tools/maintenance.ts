@@ -110,7 +110,7 @@ export class MaintenanceTools {
           if (!text) {
             throw new Error(`청크 ${p.id}: text 필드가 없어 재임베딩 불가`);
           }
-          const embedding = await this.embedder.embed(text);
+          const embedding = await this.embedder.embed(text, { allowShrink: false });
           await target.upsert(p.id, embedding, p.payload);
           result.success++;
         } catch (e: any) {
@@ -246,7 +246,7 @@ export class MaintenanceTools {
     const newMeta = this.payloadToMeta(newPayload);
 
     // text 불변 → 재임베딩(embedder 캐시로 저렴), 벡터 유지
-    const embedding = await this.embedder.embed(oldPayload.text);
+    const embedding = await this.embedder.embed(oldPayload.text, { allowShrink: false });
     await target.upsert(point.id, embedding, newPayload);
 
     // 카테고리/토픽 카운트 정합성: 기존 감소 후 신규 증가 (변경 없으면 net-neutral)
@@ -415,7 +415,7 @@ export class MaintenanceTools {
       const newPayload = { ...payload, updated_at: now };
 
       // 목적지 저장 (재임베딩)
-      const embedding = await this.embedder.embed(payload.text);
+      const embedding = await this.embedder.embed(payload.text, { allowShrink: false });
       await to.upsert(chunkId, embedding, newPayload);
       await to.metadataService.onChunkScribed(this.payloadToMeta(newPayload));
 

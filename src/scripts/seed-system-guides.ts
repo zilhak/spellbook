@@ -36,7 +36,7 @@ async function seed() {
       console.log(`   - ${guide.topic}...`);
 
       // 임베딩 생성
-      const embedding = await embedder.embed(guide.text);
+      const embedding = await embedder.embed(guide.text, { allowShrink: false });
 
       // VectorDB 저장
       await qdrant.upsertChunk(guide.id, embedding, {

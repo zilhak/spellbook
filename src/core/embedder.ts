@@ -89,8 +89,13 @@ export class EmbeddingService {
 
   /**
    * 단일 텍스트 임베딩 생성
+   * allowShrink=false 면 5xx 재시도에서 입력을 줄이지 않고 실패한다
+   * (기존 청크 재임베딩처럼 결과 벡터를 DB에 저장하는 경로용).
    */
-  async embed(text: string): Promise<number[]> {
+  async embed(
+    text: string,
+    options: { allowShrink: boolean } = { allowShrink: true }
+  ): Promise<number[]> {
     // 캐시 확인
     const cached = this.cache.get(text);
     if (cached) {
@@ -100,7 +105,7 @@ export class EmbeddingService {
     // Ollama API 호출 (러너 크래시를 피하기 위해 토큰 상한으로 잘라서 전송)
     const { embedding, shrunk } = await this.callOllama(
       this.truncateForEmbedding(text),
-      { allowShrink: true }
+      options
     );
 
     // 벡터 정규화 (코사인 유사도 최적화)
