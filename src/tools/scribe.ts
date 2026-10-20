@@ -88,8 +88,8 @@ export class ScribeTools {
         };
       }
 
-      // 3. 임베딩 생성
-      const embedding = await this.embedder.embed(chunk.text);
+      // 3. 임베딩 생성 (상한 초과 시 ChunkTooLargeError 로 거부 — 위 조기검사의 backstop)
+      const embedding = await this.embedder.embedForStorage(chunk.text);
 
       // 4. VectorDB 저장
       await this.qdrant.upsertChunk(chunk.id, embedding, {

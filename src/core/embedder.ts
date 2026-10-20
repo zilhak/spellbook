@@ -34,6 +34,7 @@ const MIN_SHRINK_CHARS = 80;
  *
  * 문자 기반 추정은 혼합 텍스트에서 빗나갈 수 있으므로, 그래도 5xx가 나면
  * callOllama 가 입력을 절반씩 줄이며 재시도한다(추정에 의존하지 않는 안전망).
+ * 단 저장 경로(embedForStorage)는 원문 전체를 대표해야 하므로 축소하지 않는다.
  */
 const MAX_INPUT_TOKENS = 420;
 
@@ -97,13 +98,19 @@ export class EmbeddingService {
     }
 
     // Ollama API 호출 (러너 크래시를 피하기 위해 토큰 상한으로 잘라서 전송)
-    const embedding = await this.callOllama(this.truncateForEmbedding(text));
+    const { embedding, shrunk } = await this.callOllama(
+      this.truncateForEmbedding(text),
+      { allowShrink: true }
+    );
 
     // 벡터 정규화 (코사인 유사도 최적화)
     const normalized = this.normalize(embedding);
 
-    // 캐시 저장
-    this.cache.set(text, normalized);
+    // 캐시 저장. 5xx 재시도로 축소된 벡터는 일시적 장애의 산물이므로 캐시하지 않는다
+    // (캐시하면 같은 원문의 저장 경로가 축소 벡터를 그대로 받게 된다).
+    if (!shrunk) {
+      this.cache.set(text, normalized);
+    }
 
     return normalized;
   }
@@ -132,7 +139,8 @@ export class EmbeddingService {
 
   /**
    * 저장용 임베딩 생성.
-   * embed() 와 달리 토큰 상한 초과 시 잘라내지 않고 ChunkTooLargeError 로 거부한다.
+   * embed() 와 달리 토큰 상한 초과 시 잘라내지 않고 ChunkTooLargeError 로 거부하며,
+   * 5xx 재시도에서도 입력을 줄이지 않는다(실패하면 오류). 벡터는 항상 원문 전체 기준이다.
    * (질의/재색인은 관대한 embed() 를 쓰고, 신규 저장 경로만 이 메서드를 쓴다.)
    */
   async embedForStorage(text: string): Promise<number[]> {
@@ -140,7 +148,17 @@ export class EmbeddingService {
     if (size.tooLarge) {
       throw new ChunkTooLargeError(size.estimatedTokens, size.maxTokens);
     }
-    return this.embed(text);
+
+    // 캐시에는 원문 전체로 만든 벡터만 들어 있다 (embed() 가 축소 결과를 캐시하지 않음)
+    const cached = this.cache.get(text);
+    if (cached) {
+      return cached;
+    }
+
+    const { embedding } = await this.callOllama(text, { allowShrink: false });
+    const normalized = this.normalize(embedding);
+    this.cache.set(text, normalized);
+    return normalized;
   }
 
   /**
@@ -198,8 +216,12 @@ export class EmbeddingService {
 
   /**
    * Ollama API 호출
+   * allowShrink=true 면 5xx 재시도 때 입력을 절반씩 줄이고, 줄였는지를 shrunk 로 알린다.
    */
-  private async callOllama(text: string): Promise<number[]> {
+  private async callOllama(
+    text: string,
+    options: { allowShrink: boolean }
+  ): Promise<{ embedding: number[]; shrunk: boolean }> {
     const url = `${this.config.ollamaHost}/api/embeddings`;
     let payload = text;
     let lastError: unknown;
@@ -224,7 +246,7 @@ export class EmbeddingService {
           );
         }
 
-        return response.data.embedding;
+        return { embedding: response.data.embedding, shrunk: payload !== text };
       } catch (error) {
         lastError = error;
 
@@ -245,7 +267,7 @@ export class EmbeddingService {
           // 5xx 는 러너가 입력 길이 때문에 죽은 경우가 대부분이므로,
           // 같은 입력을 반복해 러너를 또 죽이지 말고 절반으로 줄여서 재시도한다.
           const status = axios.isAxiosError(error) ? error.response?.status : undefined;
-          if (status !== undefined && status >= 500) {
+          if (options.allowShrink && status !== undefined && status >= 500) {
             const chars = [...payload];
             if (chars.length > MIN_SHRINK_CHARS) {
               const next = Math.max(MIN_SHRINK_CHARS, Math.floor(chars.length / 2));
